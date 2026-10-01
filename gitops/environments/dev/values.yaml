@@ -1,0 +1,23 @@
+# Dev environment. `global.imageTag` is bumped automatically by CI on every push to main.
+global:
+  imageRegistry: ghcr.io/shaggydesai/microservice-app
+  imageTag: latest
+
+# Demo secrets are fine for dev. NEVER do this for prod - see prod/values.yaml.
+secrets:
+  create: true
+  jwtSecret: dev-jwt-secret-not-for-production
+  internalToken: dev-internal-token
+  adminEmail: admin@shopverse.local
+  adminPassword: admin123
+  mongoUsername: shopverse
+  mongoPassword: devMongoPassword123
+
+ingress:
+  enabled: true
+  className: nginx
+  host: shopverse-dev.local
+
+mongodb:
+  persistence:
+    size: 2Gi

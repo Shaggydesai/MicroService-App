@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: shopverse
+  namespace: argocd
+spec:
+  description: ShopVerse e-commerce platform
+  sourceRepos:
+    - https://github.com/Shaggydesai/MicroService-App.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: shopverse-dev
+    - server: https://kubernetes.default.svc
+      namespace: shopverse-prod
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

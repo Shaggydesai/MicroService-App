@@ -1,0 +1,18 @@
+ShopVerse has been deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Images: {{ .Values.global.imageRegistry }}/<service>:{{ .Values.global.imageTag }}
+
+{{- if .Values.ingress.enabled }}
+Open: http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}
+{{- else }}
+Port-forward the frontend:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ .Release.Name }}-frontend 3000:8080
+  open http://localhost:3000
+{{- end }}
+
+Admin login: the admin-email / admin-password keys of secret "{{ include "shopverse.secretName" . }}".
+Smoke test:  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
+{{- if and .Values.secrets.create (eq .Values.secrets.jwtSecret "change-me-jwt-secret") }}
+
+WARNING: default secrets are in use. Set secrets.existingSecret for any real environment.
+{{- end }}

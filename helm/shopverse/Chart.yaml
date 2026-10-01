@@ -1,0 +1,8 @@
+apiVersion: v2
+name: shopverse
+description: ShopVerse - microservices e-commerce platform (frontend, gateway, user, product, cart, order, payment + MongoDB)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords: [ecommerce, microservices, nodejs, react]
+home: https://github.com/shaggydesai/microservice-app

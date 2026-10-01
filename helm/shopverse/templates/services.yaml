@@ -1,0 +1,23 @@
+{{- $root := . -}}
+{{- range $name, $raw := .Values.services }}
+{{- if $raw.enabled }}
+{{- $svc := include "shopverse.serviceConfig" (dict "root" $root "cfg" $raw) | fromYaml }}
+{{- $ctx := dict "root" $root "name" $name }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "shopverse.componentName" $ctx }}
+  labels:
+    {{- include "shopverse.labels" $ctx | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "shopverse.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+{{- end }}
+{{- end }}

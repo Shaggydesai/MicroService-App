@@ -1,0 +1,15 @@
+{
+  "name": "@shopverse/api-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ShopVerse api-gateway",
+  "main": "src/index.js",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "lint": "node --check src/*.js"
+  },
+  "dependencies": { "express": "^4.21.2", "express-rate-limit": "^7.5.0", "http-proxy-middleware": "^3.0.3" }
+}

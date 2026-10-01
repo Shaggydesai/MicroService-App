@@ -1,0 +1,96 @@
+# Local development stack: `docker compose up --build` then open http://localhost:3000
+x-service-env: &service-env
+  JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret-change-me}
+  INTERNAL_TOKEN: ${INTERNAL_TOKEN:-local-dev-internal-token}
+  PRODUCT_SERVICE_URL: http://product-service:8080
+  CART_SERVICE_URL: http://cart-service:8080
+  PAYMENT_SERVICE_URL: http://payment-service:8080
+
+x-service: &service
+  restart: unless-stopped
+  depends_on:
+    mongodb:
+      condition: service_healthy
+
+services:
+  mongodb:
+    image: mongo:7.0
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  user-service:
+    <<: *service
+    build: ./services/user-service
+    image: shopverse/user-service:local
+    environment:
+      <<: *service-env
+      MONGO_URI: mongodb://mongodb:27017/shopverse_users
+      ADMIN_EMAIL: admin@shopverse.local
+      ADMIN_PASSWORD: admin123
+
+  product-service:
+    <<: *service
+    build: ./services/product-service
+    image: shopverse/product-service:local
+    environment:
+      <<: *service-env
+      MONGO_URI: mongodb://mongodb:27017/shopverse_products
+      SEED_DATA: "true"
+
+  cart-service:
+    <<: *service
+    build: ./services/cart-service
+    image: shopverse/cart-service:local
+    environment:
+      <<: *service-env
+      MONGO_URI: mongodb://mongodb:27017/shopverse_carts
+
+  order-service:
+    <<: *service
+    build: ./services/order-service
+    image: shopverse/order-service:local
+    environment:
+      <<: *service-env
+      MONGO_URI: mongodb://mongodb:27017/shopverse_orders
+
+  payment-service:
+    <<: *service
+    build: ./services/payment-service
+    image: shopverse/payment-service:local
+    environment:
+      <<: *service-env
+      MONGO_URI: mongodb://mongodb:27017/shopverse_payments
+
+  api-gateway:
+    build: ./services/api-gateway
+    image: shopverse/api-gateway:local
+    restart: unless-stopped
+    environment:
+      USER_SERVICE_URL: http://user-service:8080
+      PRODUCT_SERVICE_URL: http://product-service:8080
+      CART_SERVICE_URL: http://cart-service:8080
+      ORDER_SERVICE_URL: http://order-service:8080
+      PAYMENT_SERVICE_URL: http://payment-service:8080
+      CORS_ORIGINS: http://localhost:5173
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build: ./frontend
+    image: shopverse/frontend:local
+    restart: unless-stopped
+    environment:
+      API_GATEWAY_URL: http://api-gateway:8080
+    depends_on:
+      - api-gateway
+    ports:
+      - "3000:8080"
+
+volumes:
+  mongo-data:

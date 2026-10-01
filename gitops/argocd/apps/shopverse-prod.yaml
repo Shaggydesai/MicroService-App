@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shopverse-prod
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: shopverse
+    environment: prod
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: shopverse
+  source:
+    repoURL: https://github.com/Shaggydesai/MicroService-App.git
+    targetRevision: main
+    path: helm/shopverse
+    helm:
+      releaseName: shopverse
+      valueFiles:
+        - ../../gitops/environments/prod/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: shopverse-prod
+  syncPolicy:
+    # Production syncs automatically too, but only changes when a promotion PR is merged.
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+  revisionHistoryLimit: 10

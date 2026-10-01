@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ .Release.Name }}-test-connection
+  labels:
+    {{- include "shopverse.labels" (dict "root" . "name" "test") | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    seccompProfile: { type: RuntimeDefault }
+  containers:
+    - name: smoke
+      image: busybox:1.36
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: { drop: [ALL] }
+      command: [sh, -c]
+      args:
+        - >-
+          wget -qO- http://{{ .Release.Name }}-api-gateway:8080/api/products?limit=1 &&
+          wget -qO- http://{{ .Release.Name }}-frontend:8080/healthz

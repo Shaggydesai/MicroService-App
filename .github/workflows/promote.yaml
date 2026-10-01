@@ -1,0 +1,52 @@
+name: Promote to prod
+
+# Opens a PR that sets the prod image tag. Merging the PR is the production deployment (GitOps).
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to promote (e.g. sha-1a2b3c4 or 1.2.0). Empty = the tag currently running in dev."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag
+        run: |
+          TAG="${{ inputs.tag }}"
+          if [ -z "$TAG" ]; then TAG=$(yq '.global.imageTag' gitops/environments/dev/values.yaml); fi
+          CURRENT=$(yq '.global.imageTag' gitops/environments/prod/values.yaml)
+          echo "Promoting ${CURRENT} -> ${TAG}"
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "CURRENT=${CURRENT}" >> "$GITHUB_ENV"
+
+      - name: Verify images exist in GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for svc in frontend api-gateway user-service product-service cart-service order-service payment-service; do
+            docker manifest inspect "ghcr.io/${GITHUB_REPOSITORY,,}/${svc}:${TAG}" > /dev/null
+            echo "✓ ${svc}:${TAG}"
+          done
+
+      - name: Set prod imageTag
+        run: yq -i ".global.imageTag = \"${TAG}\"" gitops/environments/prod/values.yaml
+
+      - name: Open promotion PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: promote/prod-${{ env.TAG }}
+          commit-message: "chore(gitops): promote ${{ env.TAG }} to prod"
+          title: "Promote ${{ env.TAG }} to prod"
+          body: |
+            Promotes ShopVerse images from `${{ env.CURRENT }}` to `${{ env.TAG }}` in production.
+
+            Merging this PR deploys it: Argo CD syncs `gitops/environments/prod`.
+          labels: promotion

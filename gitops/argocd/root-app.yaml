@@ -1,0 +1,25 @@
+# App-of-apps: apply this once (kubectl apply -f gitops/argocd/root-app.yaml) and Argo CD
+# takes over everything under gitops/argocd/apps from then on.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shopverse-root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Shaggydesai/MicroService-App.git
+    targetRevision: main
+    path: gitops/argocd
+    directory:
+      recurse: true
+      exclude: root-app.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

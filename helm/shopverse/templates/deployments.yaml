@@ -1,0 +1,143 @@
+{{- $root := . -}}
+{{- $secret := include "shopverse.secretName" . -}}
+{{- range $name, $raw := .Values.services }}
+{{- if $raw.enabled }}
+{{- $svc := include "shopverse.serviceConfig" (dict "root" $root "cfg" $raw) | fromYaml }}
+{{- $ctx := dict "root" $root "name" $name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "shopverse.componentName" $ctx }}
+  labels:
+    {{- include "shopverse.labels" $ctx | nindent 4 }}
+spec:
+  {{- if not $svc.autoscaling.enabled }}
+  replicas: {{ $svc.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "shopverse.selectorLabels" $ctx | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "shopverse.selectorLabels" $ctx | nindent 8 }}
+        app.kubernetes.io/part-of: shopverse
+      annotations:
+        checksum/secret: {{ include (print $root.Template.BasePath "/secret.yaml") $root | sha256sum }}
+        {{- with $svc.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "shopverse.serviceAccountName" $root }}
+      {{- with $root.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
+        runAsUser: {{ $svc.runAsUser }}
+        runAsGroup: {{ $svc.runAsUser }}
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: {{ $name }}
+          image: {{ include "shopverse.image" (dict "root" $root "cfg" $svc) }}
+          imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml $root.Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+              protocol: TCP
+          env:
+            - name: PORT
+              value: {{ $svc.port | quote }}
+            {{- if eq $name "frontend" }}
+            - name: API_GATEWAY_URL
+              value: {{ printf "http://%s-api-gateway.%s.svc.%s:8080" $root.Release.Name $root.Release.Namespace $root.Values.clusterDomain | quote }}
+            - name: NGINX_RESOLVER
+              value: {{ $root.Values.clusterDNS | quote }}
+            {{- else }}
+            - name: SERVICE_NAME
+              value: {{ $name | quote }}
+            {{- range $dep := list "user-service" "product-service" "cart-service" "order-service" "payment-service" }}
+            - name: {{ $dep | replace "-" "_" | upper }}_URL
+              value: {{ include "shopverse.serviceUrl" (dict "root" $root "name" $dep) | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if $svc.mongoDatabase }}
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: {{ $secret }}, key: jwt-secret } }
+            - name: INTERNAL_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ $secret }}, key: internal-token } }
+            - name: MONGO_USERNAME
+              valueFrom: { secretKeyRef: { name: {{ $secret }}, key: mongo-username } }
+            - name: MONGO_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ $secret }}, key: mongo-password } }
+            - name: MONGO_URI
+              value: {{ printf "mongodb://$(MONGO_USERNAME):$(MONGO_PASSWORD)@%s/%s?%s" (include "shopverse.mongoHost" $root) $svc.mongoDatabase $root.Values.mongodb.external.options | quote }}
+            {{- end }}
+            {{- if $svc.seedAdmin }}
+            - name: ADMIN_EMAIL
+              valueFrom: { secretKeyRef: { name: {{ $secret }}, key: admin-email } }
+            - name: ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ $secret }}, key: admin-password } }
+            {{- end }}
+            {{- range $k, $v := $svc.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 15
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet: { path: {{ if eq $name "frontend" }}/healthz{{ else }}/readyz{{ end }}, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          volumeMounts:
+            {{- range $i, $path := $svc.writablePaths }}
+            - name: writable-{{ $i }}
+              mountPath: {{ $path }}
+            {{- end }}
+      volumes:
+        {{- range $i, $path := $svc.writablePaths }}
+        - name: writable-{{ $i }}
+          emptyDir: {}
+        {{- end }}
+      {{- with $svc.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if $svc.affinity }}
+      affinity:
+        {{- toYaml $svc.affinity | nindent 8 }}
+      {{- else }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "shopverse.selectorLabels" $ctx | nindent 20 }}
+      {{- end }}
+{{- end }}
+{{- end }}

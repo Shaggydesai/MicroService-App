@@ -1,0 +1,102 @@
+{{- if .Values.mongodb.enabled }}
+{{- $ctx := dict "root" . "name" "mongodb" }}
+{{- $secret := include "shopverse.secretName" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "shopverse.componentName" $ctx }}
+  labels:
+    {{- include "shopverse.labels" $ctx | nindent 4 }}
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    {{- include "shopverse.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: mongo
+      port: {{ .Values.mongodb.port }}
+      targetPort: mongo
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "shopverse.componentName" $ctx }}
+  labels:
+    {{- include "shopverse.labels" $ctx | nindent 4 }}
+spec:
+  serviceName: {{ include "shopverse.componentName" $ctx }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "shopverse.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shopverse.selectorLabels" $ctx | nindent 8 }}
+        app.kubernetes.io/part-of: shopverse
+    spec:
+      serviceAccountName: {{ include "shopverse.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mongodb
+          image: {{ .Values.mongodb.image }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: mongo
+              containerPort: 27017
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom: { secretKeyRef: { name: {{ $secret }}, key: mongo-username } }
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ $secret }}, key: mongo-password } }
+          readinessProbe:
+            exec:
+              command: [mongosh, --quiet, --eval, "db.adminCommand('ping').ok"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: [mongosh, --quiet, --eval, "db.adminCommand('ping').ok"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.mongodb.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data/db
+            - name: tmp
+              mountPath: /tmp
+            - name: configdb
+              mountPath: /data/configdb
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: configdb
+          emptyDir: {}
+        {{- if not .Values.mongodb.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
+  {{- if .Values.mongodb.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.mongodb.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.mongodb.persistence.size }}
+  {{- end }}
+{{- end }}

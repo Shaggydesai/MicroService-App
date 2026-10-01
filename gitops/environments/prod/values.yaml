@@ -1,0 +1,46 @@
+# Production environment. `global.imageTag` is changed only through the "Promote to prod" workflow (PR).
+global:
+  imageRegistry: ghcr.io/shaggydesai/microservice-app
+  imageTag: latest
+
+# Create this secret out-of-band (Sealed Secrets / External Secrets / SOPS), keys:
+#   jwt-secret, internal-token, admin-email, admin-password, mongo-username, mongo-password
+secrets:
+  create: false
+  existingSecret: shopverse-secrets
+
+ingress:
+  enabled: true
+  className: nginx
+  host: shop.example.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    enabled: true
+    secretName: shopverse-tls
+
+serviceDefaults:
+  replicaCount: 2
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: "1", memory: 384Mi }
+
+# Per-service overrides are deep-merged with helm/shopverse/values.yaml, e.g.:
+# services:
+#   product-service:
+#     env:
+#       SEED_DATA: "false"   # skip demo catalog seeding
+
+mongodb:
+  persistence:
+    size: 20Gi
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "2", memory: 2Gi }
