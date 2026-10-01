@@ -1,5 +1,7 @@
 # Local development stack: `docker compose up --build` then open http://localhost:3000
+# With observability (Grafana on :3001): `docker compose --profile observability up --build`
 x-service-env: &service-env
+  PYROSCOPE_SERVER_ADDRESS: ${PYROSCOPE_SERVER_ADDRESS:-}
   JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret-change-me}
   INTERNAL_TOKEN: ${INTERNAL_TOKEN:-local-dev-internal-token}
   PRODUCT_SERVICE_URL: http://product-service:8080
@@ -78,6 +80,7 @@ services:
       ORDER_SERVICE_URL: http://order-service:8080
       PAYMENT_SERVICE_URL: http://payment-service:8080
       CORS_ORIGINS: http://localhost:5173
+      PYROSCOPE_SERVER_ADDRESS: ${PYROSCOPE_SERVER_ADDRESS:-}
     ports:
       - "8080:8080"
 
@@ -91,6 +94,52 @@ services:
       - api-gateway
     ports:
       - "3000:8080"
+
+  # ---------- observability profile ----------
+  prometheus:
+    image: prom/prometheus:v3.4.0
+    profiles: [observability]
+    command: [--config.file=/etc/prometheus/prometheus.yml, --web.enable-lifecycle]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/rules.yml:/etc/prometheus/rules.yml:ro
+    ports:
+      - "9090:9090"
+
+  loki:
+    image: grafana/loki:3.5.0
+    profiles: [observability]
+    command: [-config.file=/etc/loki/local-config.yaml]
+    ports:
+      - "3100:3100"
+
+  alloy:
+    image: grafana/alloy:v1.8.3
+    profiles: [observability]
+    command: [run, /etc/alloy/config.alloy, --server.http.listen-addr=0.0.0.0:12345]
+    volumes:
+      - ./observability/alloy.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on: [loki]
+
+  pyroscope:
+    image: grafana/pyroscope:1.13.4
+    profiles: [observability]
+    ports:
+      - "4040:4040"
+
+  grafana:
+    image: grafana/grafana:12.0.0
+    profiles: [observability]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./helm/shopverse/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    depends_on: [prometheus, loki, pyroscope]
 
 volumes:
   mongo-data:

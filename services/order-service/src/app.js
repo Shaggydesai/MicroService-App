@@ -2,8 +2,21 @@ const crypto = require('crypto');
 const express = require('express');
 const mongoose = require('mongoose');
 const {
-  ah, HttpError, authenticate, requireAdmin, requireEnv, requestLogger, errorHandler, healthRoutes, callService, log,
+  ah, HttpError, authenticate, requireAdmin, requireEnv, requestLogger, errorHandler, healthRoutes, callService, log, metrics,
 } = require('./lib');
+
+const ordersPlaced = metrics.counter('shopverse_orders_placed_total', 'Orders placed', ['payment_method']);
+const orderValue = metrics.histogram('shopverse_order_value_inr', 'Order value in INR', ['payment_method'],
+  [100, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000]);
+const revenue = metrics.counter('shopverse_revenue_inr_total', 'Gross order value in INR', ['payment_method']);
+const checkoutFailures = metrics.counter('shopverse_checkout_failures_total', 'Failed checkouts', ['reason']);
+const ordersCancelled = metrics.counter('shopverse_orders_cancelled_total', 'Orders cancelled by customers');
+// Export every known series at 0 so increase()/rate() also count the very first event
+for (const m of ['UPI', 'CARD', 'NETBANKING', 'COD']) {
+  ordersPlaced.inc({ payment_method: m }, 0);
+  revenue.inc({ payment_method: m }, 0);
+}
+for (const reason of ['stock', 'payment_declined', 'payment_error']) checkoutFailures.inc({ reason }, 0);
 
 const STATUSES = ['CONFIRMED', 'PACKED', 'SHIPPED', 'OUT_FOR_DELIVERY', 'DELIVERED', 'CANCELLED'];
 const CANCELLABLE = ['CONFIRMED', 'PACKED'];
@@ -76,6 +89,9 @@ r.post('/', ah(async (req, res) => {
   const reserved = await callService(`${PRODUCT()}/internal/products/reserve`, {
     method: 'POST',
     body: { items: lines },
+  }).catch((err) => {
+    checkoutFailures.inc({ reason: 'stock' });
+    throw err;
   });
 
   const release = () =>
@@ -100,6 +116,7 @@ r.post('/', ah(async (req, res) => {
     });
   } catch (err) {
     await release();
+    checkoutFailures.inc({ reason: err.status === 402 ? 'payment_declined' : 'payment_error' });
     throw new HttpError(err.status === 402 ? 402 : 502, `Payment failed: ${err.message}`);
   }
 
@@ -123,6 +140,9 @@ r.post('/', ah(async (req, res) => {
   await callService(`${CART()}/internal/cart/${req.user.id}`, { method: 'DELETE' })
     .catch((err) => log('warn', 'cart clear failed', { error: err.message }));
 
+  ordersPlaced.inc({ payment_method: paymentMethod });
+  orderValue.observe({ payment_method: paymentMethod }, order.amounts.total);
+  revenue.inc({ payment_method: paymentMethod }, order.amounts.total);
   log('info', 'order placed', { orderNumber, total: order.amounts.total });
   res.status(201).json(order);
 }));
@@ -158,6 +178,7 @@ r.post('/:orderNumber/cancel', ah(async (req, res) => {
   }).catch(() => null);
 
   order.status = 'CANCELLED';
+  ordersCancelled.inc();
   if (payment) order.payment.status = payment.status;
   order.history.push({ status: 'CANCELLED' });
   await order.save();

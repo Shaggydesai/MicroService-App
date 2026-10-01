@@ -1,0 +1,13 @@
+# Mirrors helm/shopverse/templates/prometheusrule.yaml (subset) for local testing
+groups:
+  - name: shopverse.local
+    rules:
+      - alert: ShopVerseServiceDown
+        expr: up{job="shopverse"} == 0
+        for: 1m
+        labels: { severity: critical }
+      - record: shopverse:http_errors:ratio5m
+        expr: |
+          sum by (namespace, service) (rate(http_request_duration_seconds_count{status_code=~"5.."}[5m]))
+            /
+          sum by (namespace, service) (rate(http_request_duration_seconds_count[5m]))

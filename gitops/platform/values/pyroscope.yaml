@@ -1,0 +1,13 @@
+# Single-binary Pyroscope. Apps push profiles to http://pyroscope.monitoring.svc.cluster.local:4040
+pyroscope:
+  replicaCount: 1
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+# The chart can also deploy Alloy to pull pprof endpoints; we push from the Node.js SDK instead.
+alloy:
+  enabled: false
+serviceMonitor:
+  enabled: true

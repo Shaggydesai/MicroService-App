@@ -1,0 +1,10 @@
+# Pool and advertisement live in gitops/platform/manifests/metallb
+controller:
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+speaker:
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+prometheus:
+  serviceMonitor:
+    enabled: true

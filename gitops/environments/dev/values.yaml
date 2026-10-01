@@ -3,20 +3,34 @@ global:
   imageRegistry: ghcr.io/shaggydesai/microservice-app
   imageTag: latest
 
-# Demo secrets are fine for dev. NEVER do this for prod - see prod/values.yaml.
+# Secrets come from Vault (secret/shopverse/dev) via External Secrets Operator.
+# Seed them once with scripts/vault-bootstrap.sh.
+externalSecret:
+  enabled: true
+  remoteKey: shopverse/dev
 secrets:
-  create: true
-  jwtSecret: dev-jwt-secret-not-for-production
-  internalToken: dev-internal-token
-  adminEmail: admin@shopverse.local
-  adminPassword: admin123
-  mongoUsername: shopverse
-  mongoPassword: devMongoPassword123
+  create: false
 
 ingress:
   enabled: true
   className: nginx
-  host: shopverse-dev.local
+  host: shop-dev.shopverse.local
+  annotations:
+    cert-manager.io/cluster-issuer: shopverse-ca-issuer
+  tls:
+    enabled: true
+    secretName: shopverse-dev-tls
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+  prometheusRule:
+    enabled: true
+  dashboards:
+    enabled: true
+
+profiling:
+  enabled: true
 
 mongodb:
   persistence:

@@ -1,0 +1,68 @@
+{{- if .Values.monitoring.prometheusRule.enabled }}
+{{- $sel := printf "namespace=\"%s\"" .Release.Namespace }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ .Release.Name }}-shopverse
+  labels:
+    {{- include "shopverse.labels" (dict "root" . "name" "monitoring") | nindent 4 }}
+    {{- with .Values.monitoring.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: shopverse.availability
+      rules:
+        - alert: ShopVerseServiceDown
+          expr: up{ {{- $sel }},job=~"{{ .Release.Name }}-.*"} == 0
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{`{{ $labels.job }}`}} is down"
+            description: "Prometheus cannot scrape {{`{{ $labels.pod }}`}} in {{`{{ $labels.namespace }}`}}."
+        - alert: ShopVerseMongoDisconnected
+          expr: min by (namespace, service) (mongodb_connection_up{ {{- $sel }}}) == 0
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{`{{ $labels.service }}`}} lost its MongoDB connection"
+    - name: shopverse.slo
+      rules:
+        - record: shopverse:http_requests:rate5m
+          expr: sum by (namespace, service, status_code) (rate(http_request_duration_seconds_count{ {{- $sel }}}[5m]))
+        - record: shopverse:http_errors:ratio5m
+          expr: |
+            sum by (namespace, service) (rate(http_request_duration_seconds_count{ {{- $sel }},status_code=~"5.."}[5m]))
+              /
+            sum by (namespace, service) (rate(http_request_duration_seconds_count{ {{- $sel }}}[5m]))
+        - alert: ShopVerseHighErrorRate
+          expr: shopverse:http_errors:ratio5m > 0.05
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{`{{ $labels.service }}`}} 5xx ratio is {{`{{ $value | humanizePercentage }}`}}"
+        - alert: ShopVerseHighLatency
+          expr: |
+            histogram_quantile(0.95, sum by (namespace, service, le) (rate(http_request_duration_seconds_bucket{ {{- $sel }}}[5m]))) > 1
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{`{{ $labels.service }}`}} p95 latency is {{`{{ $value | humanizeDuration }}`}}"
+    - name: shopverse.business
+      rules:
+        - alert: ShopVerseCheckoutErrors
+          expr: sum by (namespace, reason) (rate(shopverse_checkout_failures_total{ {{- $sel }},reason!="payment_declined"}[10m])) > 0.05
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "Checkouts failing with reason {{`{{ $labels.reason }}`}}"
+        - alert: ShopVerseHighPaymentDeclineRate
+          expr: |
+            sum by (namespace) (rate(shopverse_payments_total{ {{- $sel }},status="FAILED"}[30m]))
+              /
+            sum by (namespace) (rate(shopverse_payments_total{ {{- $sel }}}[30m])) > 0.3
+          for: 15m
+          labels: { severity: warning }
+          annotations:
+            summary: "More than 30% of payments are being declined"
+{{- end }}

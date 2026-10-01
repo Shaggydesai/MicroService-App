@@ -2,8 +2,13 @@ const crypto = require('crypto');
 const express = require('express');
 const mongoose = require('mongoose');
 const {
-  ah, HttpError, authenticate, requireInternal, requestLogger, errorHandler, healthRoutes,
+  ah, HttpError, authenticate, requireInternal, requestLogger, errorHandler, healthRoutes, metrics,
 } = require('./lib');
+
+const paymentsTotal = metrics.counter('shopverse_payments_total', 'Payment attempts', ['method', 'status']);
+for (const method of ['COD', 'CARD', 'UPI', 'NETBANKING']) {
+  for (const status of ['PENDING', 'SUCCESS', 'FAILED']) paymentsTotal.inc({ method, status }, 0);
+}
 
 // Mock payment processor. Swap `processPayment` for a real gateway (Razorpay, Stripe, ...) later.
 const paymentSchema = new mongoose.Schema(
@@ -64,6 +69,7 @@ internal.post('/charge', ah(async (req, res) => {
     method,
     ...result,
   });
+  paymentsTotal.inc({ method, status: payment.status });
   res.status(payment.status === 'FAILED' ? 402 : 201).json(payment);
 }));
 

@@ -1,0 +1,26 @@
+# Cluster add-ons (networking, TLS, secrets, observability). Needs cluster-scoped resources (CRDs, webhooks, RBAC).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  description: Shared cluster platform - MetalLB, ingress, cert-manager, Vault, ESO, monitoring
+  sourceRepos:
+    - https://github.com/Shaggydesai/MicroService-App.git
+    - https://metallb.github.io/metallb
+    - https://kubernetes.github.io/ingress-nginx
+    - https://charts.jetstack.io
+    - https://helm.releases.hashicorp.com
+    - https://charts.external-secrets.io
+    - https://prometheus-community.github.io/helm-charts
+    - https://grafana.github.io/helm-charts
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "*"
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

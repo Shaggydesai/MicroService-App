@@ -2,8 +2,60 @@
 // NOTE: this file is copied into each service so every image builds independently.
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
+const promClient = require('prom-client');
 
 const SERVICE = process.env.SERVICE_NAME || 'service';
+
+// ---- Prometheus metrics (scraped from /metrics by a ServiceMonitor) ----
+const registry = new promClient.Registry();
+registry.setDefaultLabels({ service: SERVICE });
+promClient.collectDefaultMetrics({ register: registry });
+
+const httpDuration = new promClient.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'HTTP request latency',
+  labelNames: ['method', 'route', 'status_code'],
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],
+  registers: [registry],
+});
+
+new promClient.Gauge({
+  name: 'mongodb_connection_up',
+  help: '1 when the MongoDB connection is ready',
+  registers: [registry],
+  collect() {
+    this.set(mongoose.connection.readyState === 1 ? 1 : 0);
+  },
+});
+
+// Business metrics, e.g. metrics.counter('orders_placed_total', 'Orders placed', ['payment_method'])
+const metrics = {
+  counter: (name, help, labelNames = []) => new promClient.Counter({ name, help, labelNames, registers: [registry] }),
+  histogram: (name, help, labelNames = [], buckets) =>
+    new promClient.Histogram({ name, help, labelNames, buckets, registers: [registry] }),
+};
+
+// ---- Continuous profiling (Grafana Pyroscope), enabled when PYROSCOPE_SERVER_ADDRESS is set ----
+function startProfiling() {
+  const serverAddress = process.env.PYROSCOPE_SERVER_ADDRESS;
+  if (!serverAddress) return;
+  try {
+    const Pyroscope = require('@pyroscope/nodejs');
+    Pyroscope.init({
+      serverAddress,
+      appName: process.env.PYROSCOPE_APP_NAME || `shopverse.${SERVICE}`,
+      tags: {
+        service: SERVICE,
+        namespace: process.env.POD_NAMESPACE || 'local',
+        version: process.env.APP_VERSION || 'dev',
+      },
+    });
+    Pyroscope.start();
+    log('info', 'pyroscope profiling started', { serverAddress });
+  } catch (err) {
+    log('warn', 'pyroscope profiling unavailable', { error: err.message });
+  }
+}
 
 function log(level, msg, extra = {}) {
   process.stdout.write(
@@ -55,10 +107,22 @@ class HttpError extends Error {
   }
 }
 
+// Route template label (e.g. /api/orders/:orderNumber) keeps metric cardinality low.
+// Express clears req.baseUrl when an async handler forwards an error, so fall back to the mount prefix.
+function routeLabel(req) {
+  if (!req.route) return 'unmatched';
+  const base = req.baseUrl || (req.originalUrl.match(/^\/(api|internal)\/[^/?]+/) || [''])[0];
+  return req.route.path === '/' ? base || '/' : `${base}${req.route.path}`;
+}
+
 function requestLogger(req, res, next) {
   const start = Date.now();
   res.on('finish', () => {
-    if (req.path === '/healthz' || req.path === '/readyz') return;
+    if (req.path === '/healthz' || req.path === '/readyz' || req.path === '/metrics') return;
+    httpDuration.observe(
+      { method: req.method, route: routeLabel(req), status_code: res.statusCode },
+      (Date.now() - start) / 1000
+    );
     log('info', 'request', {
       method: req.method,
       path: req.originalUrl,
@@ -84,6 +148,10 @@ function healthRoutes(app) {
     const ready = mongoose.connection.readyState === 1;
     res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not-ready' });
   });
+  app.get('/metrics', async (req, res) => {
+    res.set('Content-Type', registry.contentType);
+    res.end(await registry.metrics());
+  });
 }
 
 async function connectMongo() {
@@ -103,6 +171,7 @@ async function connectMongo() {
 }
 
 function start(app, { port, onReady } = {}) {
+  startProfiling();
   const listenPort = Number(port || process.env.PORT || 8080);
   const server = app.listen(listenPort, () => log('info', `listening on :${listenPort}`));
   connectMongo()
@@ -149,4 +218,5 @@ module.exports = {
   healthRoutes,
   start,
   callService,
+  metrics,
 };

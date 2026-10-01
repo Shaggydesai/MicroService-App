@@ -2,6 +2,17 @@
 
 ShopVerse is a Flipkart/Amazon-style shopping app built as a set of microservices. It has a React storefront, an API gateway, five Node.js domain services and MongoDB. Every component ships as its own container image on GHCR. A Helm chart deploys it to Kubernetes, and Argo CD manages that deployment through GitOps.
 
+Argo CD also manages a cluster platform layer:
+
+| Concern | Component |
+|---|---|
+| Load balancing (bare metal) | **MetalLB** gives ingress-nginx an external IP |
+| TLS | **cert-manager** with a private CA for `*.shopverse.local` and Let's Encrypt for real domains |
+| Secrets | **HashiCorp Vault** holds the secrets, and the **External Secrets Operator** syncs them into Kubernetes |
+| Metrics and alerts | **Prometheus**, Alertmanager and **Grafana** (kube-prometheus-stack) |
+| Logs | **Loki**, fed by Grafana Alloy |
+| Continuous profiling | **Pyroscope**, fed by the `@pyroscope/nodejs` SDK in every service |
+
 ![stack](https://img.shields.io/badge/stack-React%20%7C%20Node.js%20%7C%20MongoDB%20%7C%20Helm%20%7C%20Argo%20CD-2874f0)
 
 ## Features
@@ -12,6 +23,7 @@ ShopVerse is a Flipkart/Amazon-style shopping app built as a set of microservice
 - **Checkout saga:** the order service reserves stock, charges the payment, saves the order and clears the cart. If a step fails, the earlier steps are undone (stock is released and the payment refunded).
 - **Mock payment gateway:** supports UPI, card, net banking and COD. Card `4000 0000 0000 0002` is always declined. COD payments are captured when the order is delivered.
 - **Production-minded setup:** non-root containers with a read-only filesystem, health and readiness probes, HPA, PDB, NetworkPolicies, JSON logs and graceful shutdown.
+- **Observability built in:** every service exposes Prometheus `/metrics` (RED metrics, Node.js runtime and business KPIs such as orders, revenue and payment declines), writes JSON logs for Loki and pushes CPU/wall-time profiles to Pyroscope. A ready-made Grafana dashboard and alert rules ship with the chart.
 
 ## Architecture
 
@@ -51,10 +63,17 @@ Services call each other on `/internal/*` routes. Those calls are authenticated 
 frontend/                  React + Vite storefront, nginx Dockerfile
 services/<name>/           Node.js microservices (each has its own Dockerfile)
 docker-compose.yml         Full local stack
-helm/shopverse/            Helm chart (all services + MongoDB + ingress + netpol)
+helm/shopverse/            Helm chart (services, MongoDB, ingress, netpol, ExternalSecret,
+                           ServiceMonitor, PrometheusRule, Grafana dashboard)
 gitops/
-  argocd/                  Argo CD AppProject, root app (app-of-apps), per-env Applications
+  argocd/                  Argo CD AppProjects, root app (app-of-apps), per-env Applications
+  argocd/platform/         One Argo CD Application per platform component (sync-wave ordered)
+  platform/values/         Helm values for each platform component
+  platform/manifests/      MetalLB pool, ClusterIssuers, ClusterSecretStore, Grafana admin secret
   environments/dev|prod/   Per-environment Helm values (image tags live here)
+observability/             Prometheus/Grafana/Loki/Alloy config for the local compose profile
+scripts/vault-bootstrap.sh Initialise/unseal Vault, configure ESO access, seed secrets
+renovate.json              Keeps pinned chart and npm versions up to date
 .github/workflows/         CI (build/push to GHCR + GitOps bump) and prod promotion
 Makefile                   Manual build/push helpers
 ```
@@ -70,6 +89,14 @@ docker compose up --build        # or: make up
 - Admin login: `admin@shopverse.local` / `admin123`
 
 On first start the product service seeds 40 demo products across 9 categories.
+
+### With the observability stack
+
+```bash
+PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040 docker compose --profile observability up --build
+```
+
+Grafana runs at http://localhost:3001 with anonymous admin access, and the **ShopVerse / Overview** dashboard is already provisioned. Prometheus is at :9090, Loki at :3100 and Pyroscope at :4040. Alloy collects the container logs through the Docker socket.
 
 To work on the frontend with hot reload, keep the compose stack running and run `cd frontend && npm install && npm run dev`, then open http://localhost:5173.
 
@@ -152,21 +179,17 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 # 2. (Private repo only) give Argo CD read access to this repository
 argocd repo add https://github.com/Shaggydesai/MicroService-App.git --username <user> --password <PAT>
 
-# 3. Production secret: create it before the first prod sync (use Sealed Secrets / External Secrets for real setups)
-kubectl create namespace shopverse-prod
-kubectl -n shopverse-prod create secret generic shopverse-secrets \
-  --from-literal=jwt-secret="$(openssl rand -hex 32)" \
-  --from-literal=internal-token="$(openssl rand -hex 32)" \
-  --from-literal=admin-email=admin@yourdomain.com \
-  --from-literal=admin-password="$(openssl rand -base64 18)" \
-  --from-literal=mongo-username=shopverse \
-  --from-literal=mongo-password="$(openssl rand -hex 24)"
+# 3. Respect sync waves between Applications (platform before apps). See section 5.
+kubectl -n argocd patch configmap argocd-cm --type merge -p '{"data":{"resource.customizations.health.argoproj.io_Application":"hs = {}\nhs.status = \"Progressing\"\nhs.message = \"\"\nif obj.status ~= nil and obj.status.health ~= nil then\n  hs.status = obj.status.health.status\n  if obj.status.health.message ~= nil then hs.message = obj.status.health.message end\nend\nreturn hs\n"}}'
 
 # 4. Bootstrap the app-of-apps. Everything else is managed from Git after this.
 kubectl apply -f gitops/argocd/root-app.yaml
+
+# 5. Once the vault-0 pod is Running, initialise Vault and seed all secrets (one time)
+scripts/vault-bootstrap.sh
 ```
 
-The root app syncs `gitops/argocd/`, which contains the `shopverse` AppProject and one Application per environment:
+The root app syncs `gitops/argocd/`. That directory holds the `shopverse` and `platform` AppProjects, the platform Applications (section 5) and one Application per environment:
 
 | Application | Namespace | Values | How it changes |
 |---|---|---|---|
@@ -184,6 +207,102 @@ For the workflow to open PRs, enable **Settings → Actions → General → Allo
 ### Adding an environment
 
 Copy `gitops/environments/dev` to `gitops/environments/staging`, copy `gitops/argocd/apps/shopverse-dev.yaml` to `shopverse-staging.yaml` (and update its name, namespace and values path), and add the new namespace to `gitops/argocd/project.yaml`. Then commit, and Argo CD picks it up.
+
+## 5. Platform: MetalLB, cert-manager, Vault, ESO and monitoring
+
+Each component is a separate Argo CD Application in `gitops/argocd/platform/`. Each one pins an upstream Helm chart and reads its values from `gitops/platform/values/<name>.yaml` (Argo CD multi-source). Sync waves set the install order:
+
+| Wave | Application | Namespace | Purpose |
+|---|---|---|---|
+| -30 | `prometheus-operator-crds` | monitoring | ServiceMonitor/PrometheusRule CRDs, installed first so every chart can ship monitors |
+| -29 / -28 | `metallb`, `metallb-config` | metallb-system | L2 load balancer, address pool `192.168.1.240-250` |
+| -27 / -26 | `cert-manager`, `cert-manager-config` | cert-manager | `selfsigned` issuer, then the `shopverse-root-ca` CA, then the `shopverse-ca-issuer`, `letsencrypt-staging` and `letsencrypt-prod` ClusterIssuers |
+| -25 | `ingress-nginx` | ingress-nginx | `LoadBalancer` Service with IP `192.168.1.240` from MetalLB, JSON access logs, metrics |
+| -24 | `vault` | vault | Standalone Vault with file storage and its UI at `vault.shopverse.local` |
+| -23 / -22 | `external-secrets`, `external-secrets-config` | external-secrets | ESO plus the `vault-backend` ClusterSecretStore (Vault Kubernetes auth) |
+| -21 | `monitoring-config` | monitoring | Grafana admin credentials pulled from Vault |
+| -20 | `kube-prometheus-stack`, `loki`, `pyroscope` | monitoring | Prometheus, Alertmanager, Grafana (with Loki and Pyroscope datasources), Loki, Pyroscope |
+| -19 | `alloy` | monitoring | DaemonSet that ships every pod's logs to Loki |
+| 0 | `shopverse-dev`, `shopverse-prod` | shopverse-* | The application |
+
+### Things you must edit for your environment
+
+| File | What to change |
+|---|---|
+| `gitops/platform/manifests/metallb/address-pool.yaml` | A free IP range on your node network |
+| `gitops/platform/values/ingress-nginx.yaml` | `metallb.universe.tf/loadBalancerIPs` to an IP from that range |
+| `gitops/platform/manifests/cert-manager/cluster-issuers.yaml` | Your email for Let's Encrypt |
+| `gitops/environments/prod/values.yaml` | The real prod domain (`ingress.host`), pointed at the ingress IP |
+| `gitops/platform/values/*.yaml` | Hostnames (`*.shopverse.local`) and storage sizes |
+
+For the `.local` hostnames, add them to `/etc/hosts` (or your DNS) so they point at the ingress IP. To stop browser TLS warnings, trust the private CA:
+
+```bash
+echo "192.168.1.240 shop-dev.shopverse.local grafana.shopverse.local prometheus.shopverse.local vault.shopverse.local" | sudo tee -a /etc/hosts
+kubectl -n cert-manager get secret shopverse-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > shopverse-ca.crt   # import into your OS/browser
+```
+
+### Secrets flow (Vault → ESO → Pods)
+
+```
+Vault KV v2  secret/shopverse/dev   ─┐
+             secret/shopverse/prod  ─┼─► ClusterSecretStore "vault-backend" ─► ExternalSecret (Helm chart) ─► Secret "shopverse-secrets" ─► env vars
+             secret/platform/grafana ┘        (ESO logs in with Vault Kubernetes auth, role "external-secrets", read-only policy)
+```
+
+`scripts/vault-bootstrap.sh` runs these steps and is safe to run more than once:
+
+1. Initialise Vault and save the unseal keys and root token to `vault-init.json`. **Move that file to a password manager. It is git-ignored.**
+2. Unseal Vault.
+3. Enable KV v2 and Kubernetes auth.
+4. Create the ESO policy and role.
+5. Seed random secrets for each environment and for Grafana. Existing secrets are never overwritten.
+
+Re-run the script after a Vault pod restart to unseal it again. For production, switch to HA raft storage with auto-unseal (cloud KMS or Transit).
+
+To rotate a secret, run `vault kv put secret/shopverse/prod jwt-secret=...`. ESO picks up the change within `externalSecret.refreshInterval` (1h), or immediately if you annotate the ExternalSecret with `force-sync=$(date +%s)`. Then run `kubectl rollout restart deploy -n shopverse-prod` so the pods read the new value.
+
+> For a quick local cluster without Vault, set `externalSecret.enabled=false` and `secrets.create=true` in the environment values to go back to plain chart-managed secrets.
+
+### Observability
+
+| Signal | How it gets there | Where to look |
+|---|---|---|
+| Metrics | Each service serves `/metrics` (prom-client). The chart's `ServiceMonitor` lets Prometheus scrape them (the NetworkPolicy allows the `monitoring` namespace) | Grafana dashboard **ShopVerse / Overview** |
+| Alerts | The chart's `PrometheusRule`: service down, MongoDB disconnected, 5xx ratio > 5%, p95 > 1s, checkout errors, payment decline rate > 30% | Alertmanager. Add receivers in `values/kube-prometheus-stack.yaml` |
+| Logs | Services log one JSON object per line to stdout. Alloy tails the pods and labels them with `namespace`, `app` and `level` before sending to Loki | Dashboard logs row, or Explore with `{app="order-service"} \| json` |
+| Profiles | Each service pushes wall-time/CPU and heap profiles to `pyroscope.monitoring:4040` as `shopverse.<service>` | Dashboard flame graph, or **Explore → Profiles** |
+
+Custom metrics: `shopverse_orders_placed_total`, `shopverse_revenue_inr_total`, `shopverse_order_value_inr`, `shopverse_checkout_failures_total{reason}`, `shopverse_payments_total{method,status}`, `shopverse_users_registered_total`, `shopverse_user_logins_total{result}`, `shopverse_cart_items_added_total`, `shopverse_stock_reservation_conflicts_total`, plus `http_request_duration_seconds{service,method,route,status_code}` and the Node.js defaults.
+
+Admin UIs:
+
+| UI | URL | Login |
+|---|---|---|
+| Grafana | https://grafana.shopverse.local | `admin` + `kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' \| base64 -d` |
+| Prometheus | https://prometheus.shopverse.local | – |
+| Vault | https://vault.shopverse.local | Root token from `vault-init.json` (create scoped users for day-to-day work) |
+
+The dashboard JSON is generated by `helm/shopverse/dashboards/generate.py`. Edit the script and re-run it rather than editing the JSON by hand.
+
+### Chart versions
+
+The upstream chart versions are pinned in `gitops/argocd/platform/*.yaml`:
+
+| Chart | Version |
+|---|---|
+| metallb | 0.14.9 |
+| cert-manager | v1.17.2 |
+| ingress-nginx | 4.12.1 |
+| vault | 0.29.1 |
+| external-secrets | 0.16.2 |
+| prometheus-operator-crds | 19.0.0 |
+| kube-prometheus-stack | 72.0.0 |
+| loki | 6.29.0 |
+| pyroscope | 1.13.0 |
+| alloy | 1.0.0 |
+
+`renovate.json` opens grouped PRs when newer versions come out (enable the Renovate GitHub App on the repo). ESO resources use `external-secrets.io/v1beta1`. If you upgrade ESO to a release that only serves `v1`, change `externalSecret.apiVersion` in the chart values and the two manifests under `gitops/platform/manifests/`.
 
 ## API quick reference
 
@@ -222,5 +341,6 @@ Every service exposes `/healthz` (liveness) and `/readyz` (MongoDB connected).
 | `FREE_DELIVERY_ABOVE` / `DELIVERY_FEE` | order-service | Delivery pricing |
 | `RATE_LIMIT_PER_MINUTE` / `CORS_ORIGINS` | api-gateway | Edge controls |
 | `API_GATEWAY_URL` / `NGINX_RESOLVER` | frontend | Where nginx proxies `/api` |
+| `PYROSCOPE_SERVER_ADDRESS` | all backend services | Enables continuous profiling (unset = off) |
 
 > `services/*/src/lib.js` is shared helper code. It is copied into every service on purpose, so each image builds from its own folder. If you change it, change all the copies.

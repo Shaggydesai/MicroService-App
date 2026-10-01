@@ -6,6 +6,8 @@ on:
     tags: ["v*"]
     paths-ignore:
       - "gitops/environments/**"
+      - "gitops/platform/**"
+      - "gitops/argocd/**"
       - "**.md"
   pull_request:
     branches: [main]
@@ -49,8 +51,21 @@ jobs:
           for env in gitops/environments/*/; do
             echo "Rendering $env"
             helm lint helm/shopverse -f "$env/values.yaml"
-            helm template shopverse helm/shopverse -f "$env/values.yaml" > /dev/null
+            helm template shopverse helm/shopverse -f "$env/values.yaml" > "rendered-$(basename "$env").yaml"
           done
+
+      - name: Validate manifests against Kubernetes + CRD schemas
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz kubeconform
+          ./kubeconform -strict -summary -kubernetes-version 1.30.0 \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            rendered-*.yaml gitops/argocd gitops/platform/manifests
+
+      - name: Check Prometheus alert rules
+        run: |
+          yq 'select(.kind == "PrometheusRule") | .spec' rendered-dev.yaml > rules.yaml
+          docker run --rm -v "$PWD:/w" --entrypoint promtool prom/prometheus:v3.4.0 check rules /w/rules.yaml
 
   build:
     name: Build ${{ matrix.service }}

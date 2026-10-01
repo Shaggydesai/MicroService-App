@@ -3,8 +3,13 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
 const {
-  ah, HttpError, authenticate, requireAdmin, requireEnv, requestLogger, errorHandler, healthRoutes, log,
+  ah, HttpError, authenticate, requireAdmin, requireEnv, requestLogger, errorHandler, healthRoutes, log, metrics,
 } = require('./lib');
+
+const registrations = metrics.counter('shopverse_users_registered_total', 'User registrations');
+const logins = metrics.counter('shopverse_user_logins_total', 'Login attempts', ['result']);
+logins.inc({ result: 'success' }, 0);
+logins.inc({ result: 'failure' }, 0);
 
 const addressSchema = new mongoose.Schema(
   {
@@ -72,6 +77,7 @@ r.post('/register', ah(async (req, res) => {
   if (String(password).length < 6) throw new HttpError(400, 'Password must be at least 6 characters');
   if (await User.exists({ email: email.toLowerCase() })) throw new HttpError(409, 'Email already registered');
   const user = await User.create({ name, email, phone, passwordHash: await bcrypt.hash(password, 10) });
+  registrations.inc();
   res.status(201).json({ token: issueToken(user), user: user.toPublic() });
 }));
 
@@ -80,8 +86,10 @@ r.post('/login', ah(async (req, res) => {
   if (!email || !password) throw new HttpError(400, 'email and password are required');
   const user = await User.findOne({ email: String(email).toLowerCase() });
   if (!user || !(await bcrypt.compare(String(password), user.passwordHash))) {
+    logins.inc({ result: 'failure' });
     throw new HttpError(401, 'Invalid email or password');
   }
+  logins.inc({ result: 'success' });
   res.json({ token: issueToken(user), user: user.toPublic() });
 }));
 

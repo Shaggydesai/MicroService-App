@@ -23,7 +23,7 @@ app.kubernetes.io/instance: {{ .root.Release.Name }}
 {{- end -}}
 
 {{- define "shopverse.secretName" -}}
-{{- if .Values.secrets.existingSecret -}}
+{{- if and .Values.secrets.existingSecret (not .Values.externalSecret.enabled) -}}
 {{- .Values.secrets.existingSecret -}}
 {{- else -}}
 {{- printf "%s-secrets" .Release.Name -}}

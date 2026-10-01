@@ -1,0 +1,19 @@
+controller:
+  replicaCount: 2
+  service:
+    type: LoadBalancer
+    # Pin a stable IP from the MetalLB pool so DNS can point at it
+    annotations:
+      metallb.universe.tf/loadBalancerIPs: 192.168.1.240
+    externalTrafficPolicy: Local
+  config:
+    # JSON access logs -> easy to query in Loki
+    log-format-escape-json: "true"
+    log-format-upstream: '{"time":"$time_iso8601","remote_addr":"$remote_addr","request_id":"$req_id","method":"$request_method","host":"$host","uri":"$uri","status":$status,"bytes":$body_bytes_sent,"request_time":$request_time,"upstream":"$proxy_upstream_name","upstream_time":"$upstream_response_time","user_agent":"$http_user_agent"}'
+    use-forwarded-headers: "true"
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }

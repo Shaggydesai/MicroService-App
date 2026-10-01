@@ -1,0 +1,51 @@
+# Standalone Vault with file storage. After the first sync run scripts/vault-bootstrap.sh once to
+# initialise + unseal it and configure the KV engine, Kubernetes auth and the ESO role.
+# For production use HA raft storage and auto-unseal (AWS/GCP/Azure KMS or Transit).
+global:
+  enabled: true
+injector:
+  enabled: false   # we use External Secrets Operator instead of the agent injector
+server:
+  standalone:
+    enabled: true
+    config: |
+      ui = true
+      listener "tcp" {
+        address         = "[::]:8200"
+        cluster_address = "[::]:8201"
+        tls_disable     = 1   # TLS is terminated by ingress-nginx (cert-manager certificate)
+        telemetry {
+          unauthenticated_metrics_access = true
+        }
+      }
+      storage "file" {
+        path = "/vault/data"
+      }
+      telemetry {
+        prometheus_retention_time = "30s"
+        disable_hostname          = true
+      }
+  dataStorage:
+    enabled: true
+    size: 5Gi
+  auditStorage:
+    enabled: true
+    size: 2Gi
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { memory: 512Mi }
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: shopverse-ca-issuer
+    hosts:
+      - host: vault.shopverse.local
+    tls:
+      - secretName: vault-tls
+        hosts: [vault.shopverse.local]
+ui:
+  enabled: true
+serverTelemetry:
+  serviceMonitor:
+    enabled: true

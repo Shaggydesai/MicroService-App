@@ -1,8 +1,10 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const {
-  ah, HttpError, authenticate, requireAdmin, requireInternal, requestLogger, errorHandler, healthRoutes,
+  ah, HttpError, authenticate, requireAdmin, requireInternal, requestLogger, errorHandler, healthRoutes, metrics,
 } = require('./lib');
+
+const stockConflicts = metrics.counter('shopverse_stock_reservation_conflicts_total', 'Reservations rejected for insufficient stock');
 
 const productSchema = new mongoose.Schema(
   {
@@ -147,6 +149,7 @@ internal.post('/reserve', ah(async (req, res) => {
       );
       if (!updated) {
         const p = await Product.findById(productId);
+        stockConflicts.inc();
         throw new HttpError(409, p ? `Only ${p.stock} left of "${p.name}"` : `Product ${productId} not found`);
       }
       reserved.push({ productId, quantity: qty, product: updated });

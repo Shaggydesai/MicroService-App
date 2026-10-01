@@ -3,21 +3,34 @@ global:
   imageRegistry: ghcr.io/shaggydesai/microservice-app
   imageTag: latest
 
-# Create this secret out-of-band (Sealed Secrets / External Secrets / SOPS), keys:
-#   jwt-secret, internal-token, admin-email, admin-password, mongo-username, mongo-password
+# Secrets come from Vault (secret/shopverse/prod) via External Secrets Operator.
+externalSecret:
+  enabled: true
+  remoteKey: shopverse/prod
 secrets:
   create: false
-  existingSecret: shopverse-secrets
 
 ingress:
   enabled: true
   className: nginx
-  host: shop.example.com
+  host: shop.example.com   # EDIT ME: your public domain, pointed at the MetalLB IP of ingress-nginx
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
   tls:
     enabled: true
     secretName: shopverse-tls
+
+monitoring:
+  serviceMonitor:
+    enabled: true
+  prometheusRule:
+    enabled: true
+  # The dev release already ships the dashboard (it covers every namespace via the $namespace variable)
+  dashboards:
+    enabled: false
+
+profiling:
+  enabled: true
 
 serviceDefaults:
   replicaCount: 2

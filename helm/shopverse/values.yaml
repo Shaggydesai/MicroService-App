@@ -8,9 +8,21 @@ global:
   # e.g. [{ name: ghcr-pull }] when the GHCR packages are private
   imagePullSecrets: []
 
-# Application secrets. For real environments set create=false and point existingSecret at a
-# Secret managed by Sealed Secrets / External Secrets / SOPS with the same keys:
-#   jwt-secret, internal-token, admin-email, admin-password, mongo-username, mongo-password
+# Application secrets. Three options, in order of preference:
+#   1. externalSecret.enabled=true  -> External Secrets Operator syncs them from Vault (recommended)
+#   2. secrets.existingSecret       -> a Secret you manage yourself
+#   3. secrets.create=true          -> plain values below (local/demo only)
+# Keys: jwt-secret, internal-token, admin-email, admin-password, mongo-username, mongo-password
+externalSecret:
+  enabled: false
+  apiVersion: external-secrets.io/v1beta1
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: vault-backend
+  # Vault KV v2 path (relative to the store's mount), e.g. vault kv put secret/shopverse/dev ...
+  remoteKey: shopverse/dev
+
 secrets:
   create: true
   existingSecret: ""
@@ -142,6 +154,29 @@ networkPolicy:
   # Namespace label of your ingress controller (used to allow traffic to frontend and gateway)
   ingressControllerNamespaceSelector:
     kubernetes.io/metadata.name: ingress-nginx
+
+# Observability (kube-prometheus-stack, Grafana, Loki, Pyroscope)
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    # Extra labels if your Prometheus selects ServiceMonitors by label (e.g. release: kube-prometheus-stack)
+    labels: {}
+  prometheusRule:
+    enabled: false
+    labels: {}
+  dashboards:
+    # Grafana dashboard ConfigMap picked up by the Grafana sidecar (label grafana_dashboard=1)
+    enabled: false
+    folder: ShopVerse
+  # Namespace of Prometheus, allowed through the NetworkPolicies to scrape /metrics
+  namespaceSelector:
+    kubernetes.io/metadata.name: monitoring
+
+profiling:
+  # Continuous profiling with Grafana Pyroscope (push mode from the Node.js SDK)
+  enabled: false
+  serverAddress: http://pyroscope.monitoring.svc.cluster.local:4040
 
 # In-cluster DNS server the frontend nginx uses to resolve the gateway
 clusterDNS: kube-dns.kube-system.svc.cluster.local

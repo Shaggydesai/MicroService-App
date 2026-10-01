@@ -1,0 +1,23 @@
+# Grafana admin login, stored in Vault at secret/platform/grafana
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: grafana-admin
+  namespace: monitoring
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: vault-backend
+  target:
+    name: grafana-admin
+    creationPolicy: Owner
+  data:
+    - secretKey: admin-user
+      remoteRef:
+        key: platform/grafana
+        property: admin-user
+    - secretKey: admin-password
+      remoteRef:
+        key: platform/grafana
+        property: admin-password

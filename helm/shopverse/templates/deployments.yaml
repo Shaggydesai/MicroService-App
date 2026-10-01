@@ -58,6 +58,14 @@ spec:
           env:
             - name: PORT
               value: {{ $svc.port | quote }}
+            {{- if and $root.Values.profiling.enabled (ne $name "frontend") }}
+            - name: PYROSCOPE_SERVER_ADDRESS
+              value: {{ $root.Values.profiling.serverAddress | quote }}
+            - name: POD_NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+            - name: APP_VERSION
+              value: {{ default $root.Values.global.imageTag $svc.tag | toString | quote }}
+            {{- end }}
             {{- if eq $name "frontend" }}
             - name: API_GATEWAY_URL
               value: {{ printf "http://%s-api-gateway.%s.svc.%s:8080" $root.Release.Name $root.Release.Namespace $root.Values.clusterDomain | quote }}

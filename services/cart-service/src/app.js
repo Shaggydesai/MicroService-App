@@ -1,8 +1,10 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const {
-  ah, HttpError, authenticate, requireInternal, requireEnv, requestLogger, errorHandler, healthRoutes, callService,
+  ah, HttpError, authenticate, requireInternal, requireEnv, requestLogger, errorHandler, healthRoutes, callService, metrics,
 } = require('./lib');
+
+const itemsAdded = metrics.counter('shopverse_cart_items_added_total', 'Units added to carts');
 
 const cartSchema = new mongoose.Schema(
   {
@@ -86,6 +88,7 @@ r.post('/items', ah(async (req, res) => {
   if (line) line.quantity = newQty;
   else cart.items.push({ productId, quantity: newQty });
   await cart.save();
+  itemsAdded.inc(quantity);
   res.status(201).json(await hydrate(cart));
 }));
 

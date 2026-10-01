@@ -1,0 +1,21 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "labels": ["dependencies"],
+  "argocd": {
+    "fileMatch": ["^gitops/argocd/.+\\.ya?ml$"]
+  },
+  "packageRules": [
+    {
+      "description": "Group platform Helm chart bumps (MetalLB, cert-manager, Vault, ESO, monitoring) into one PR",
+      "matchManagers": ["argocd"],
+      "groupName": "platform charts"
+    },
+    {
+      "description": "Group app npm dependency updates",
+      "matchManagers": ["npm"],
+      "groupName": "npm dependencies",
+      "schedule": ["before 6am on monday"]
+    }
+  ]
+}

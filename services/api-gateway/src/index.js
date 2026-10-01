@@ -1,12 +1,45 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { createProxyMiddleware } = require('http-proxy-middleware');
+const promClient = require('prom-client');
 
 const SERVICE = 'api-gateway';
 const PORT = Number(process.env.PORT || 8080);
 
 const log = (level, msg, extra = {}) =>
   process.stdout.write(JSON.stringify({ ts: new Date().toISOString(), level, service: SERVICE, msg, ...extra }) + '\n');
+
+// Continuous profiling (Grafana Pyroscope), enabled when PYROSCOPE_SERVER_ADDRESS is set.
+if (process.env.PYROSCOPE_SERVER_ADDRESS) {
+  try {
+    const Pyroscope = require('@pyroscope/nodejs');
+    Pyroscope.init({
+      serverAddress: process.env.PYROSCOPE_SERVER_ADDRESS,
+      appName: process.env.PYROSCOPE_APP_NAME || `shopverse.${SERVICE}`,
+      tags: { service: SERVICE, namespace: process.env.POD_NAMESPACE || 'local', version: process.env.APP_VERSION || 'dev' },
+    });
+    Pyroscope.start();
+  } catch (err) {
+    log('warn', 'pyroscope profiling unavailable', { error: err.message });
+  }
+}
+
+const registry = new promClient.Registry();
+registry.setDefaultLabels({ service: SERVICE });
+promClient.collectDefaultMetrics({ register: registry });
+const httpDuration = new promClient.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'HTTP request latency',
+  labelNames: ['method', 'route', 'status_code'],
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],
+  registers: [registry],
+});
+const upstreamErrors = new promClient.Counter({
+  name: 'gateway_upstream_errors_total',
+  help: 'Requests that failed to reach an upstream service',
+  labelNames: ['upstream'],
+  registers: [registry],
+});
 
 // Public route prefix -> upstream service. Only /api/* is ever exposed; /internal/* stays private.
 const ROUTES = {
@@ -37,7 +70,9 @@ app.use((req, res, next) => {
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
-    if (req.path === '/healthz' || req.path === '/readyz') return;
+    if (req.path === '/healthz' || req.path === '/readyz' || req.path === '/metrics') return;
+    const route = Object.keys(ROUTES).find((p) => req.path === p || req.path.startsWith(`${p}/`)) || 'unmatched';
+    httpDuration.observe({ method: req.method, route, status_code: res.statusCode }, (Date.now() - start) / 1000);
     log('info', 'request', { method: req.method, path: req.originalUrl, status: res.statusCode, ms: Date.now() - start });
   });
   next();
@@ -45,6 +80,10 @@ app.use((req, res, next) => {
 
 app.get('/healthz', (req, res) => res.json({ status: 'ok' }));
 app.get('/readyz', (req, res) => res.json({ status: 'ready' }));
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', registry.contentType);
+  res.end(await registry.metrics());
+});
 
 app.use(
   '/api',
@@ -66,6 +105,7 @@ for (const [prefix, target] of Object.entries(ROUTES)) {
       on: {
         error: (err, req, res) => {
           log('error', 'upstream error', { target, error: err.message });
+          upstreamErrors.inc({ upstream: prefix });
           if (!res.headersSent) res.writeHead(502, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ error: 'Service temporarily unavailable' }));
         },
