@@ -15,6 +15,7 @@ const ordersCancelled = metrics.counter('shopverse_orders_cancelled_total', 'Ord
 for (const m of ['UPI', 'CARD', 'NETBANKING', 'COD']) {
   ordersPlaced.inc({ payment_method: m }, 0);
   revenue.inc({ payment_method: m }, 0);
+  orderValue.zero({ payment_method: m });
 }
 for (const reason of ['stock', 'payment_declined', 'payment_error']) checkoutFailures.inc({ reason }, 0);
 

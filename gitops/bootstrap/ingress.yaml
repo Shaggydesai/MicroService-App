@@ -1,0 +1,24 @@
+# Becomes reachable once ingress-nginx + cert-manager (platform apps) are running.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server
+  namespace: argocd
+  annotations:
+    cert-manager.io/cluster-issuer: shopverse-ca-issuer
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [argocd.shopverse.local]
+      secretName: argocd-server-tls
+  rules:
+    - host: argocd.shopverse.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  name: http

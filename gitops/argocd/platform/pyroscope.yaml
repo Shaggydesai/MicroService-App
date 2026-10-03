@@ -5,7 +5,7 @@ metadata:
   name: pyroscope
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-20"
+    argocd.argoproj.io/sync-wave: "-18"
   labels:
     app.kubernetes.io/part-of: platform
   finalizers:
@@ -15,7 +15,7 @@ spec:
   sources:
     - repoURL: https://grafana.github.io/helm-charts
       chart: pyroscope
-      targetRevision: 1.13.0
+      targetRevision: 2.3.1
       helm:
         releaseName: pyroscope
         valueFiles:

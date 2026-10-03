@@ -8,3 +8,6 @@ speaker:
 prometheus:
   serviceMonitor:
     enabled: true
+  # Prometheus (kube-prometheus-stack) identity, granted access to MetalLB's protected metrics endpoint
+  serviceAccount: kube-prometheus-stack-prometheus
+  namespace: monitoring

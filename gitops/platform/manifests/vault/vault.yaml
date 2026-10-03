@@ -1,0 +1,114 @@
+# Vault, fully declarative (Bank-Vaults). The operator initialises Vault, keeps it unsealed, and
+# continuously applies `externalConfig` below (engines, auth methods, policies, roles).
+# Change Vault configuration by editing this file - never by hand.
+apiVersion: vault.banzaicloud.com/v1alpha1
+kind: Vault
+metadata:
+  name: vault
+  namespace: vault
+spec:
+  size: 1
+  image: hashicorp/vault:2.0.1
+  serviceAccount: vault
+  serviceType: ClusterIP
+  serviceRegistrationEnabled: true
+  serviceMonitorEnabled: true
+  statsdDisabled: true
+  veleroEnabled: false
+
+  resources:
+    vault:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits: { memory: 512Mi }
+
+  # Integrated storage (raft) on a PVC
+  volumeClaimTemplates:
+    - metadata:
+        name: vault-raft
+      spec:
+        accessModes: [ReadWriteOnce]
+        volumeMode: Filesystem
+        resources:
+          requests:
+            storage: 5Gi
+  volumeMounts:
+    - name: vault-raft
+      mountPath: /vault/file
+
+  # Unseal keys + root token are kept in the Secret "vault-unseal-keys" in this namespace.
+  # Fine for a lab/on-prem cluster; for production switch to a KMS-backed unseal
+  # (unsealConfig.aws / google / azure / vault-transit) - still declarative, just this block.
+  unsealConfig:
+    options:
+      preFlightChecks: true
+      storeRootToken: true
+    kubernetes:
+      secretNamespace: vault
+
+  config:
+    disable_mlock: true
+    ui: true
+    storage:
+      raft:
+        path: /vault/file
+    listener:
+      tcp:
+        address: 0.0.0.0:8200
+        tls_disable: true   # TLS terminates at ingress-nginx; in-cluster traffic stays inside the NetworkPolicy boundary
+        telemetry:
+          unauthenticated_metrics_access: true
+    telemetry:
+      prometheus_retention_time: 30s
+      disable_hostname: true
+    api_addr: http://vault.vault:8200
+    cluster_addr: "https://${.Env.POD_NAME}:8201"
+
+  externalConfig:
+    secrets:
+      - path: secret
+        type: kv
+        description: ShopVerse application and platform secrets
+        options:
+          version: 2
+    policies:
+      - name: external-secrets
+        rules: |
+          # Read anything in the KV engine (ExternalSecrets)
+          path "secret/data/*"     { capabilities = ["read"] }
+          path "secret/metadata/*" { capabilities = ["read", "list"] }
+          # Seed generated secrets once (PushSecret with updatePolicy IfNotExists)
+          path "secret/data/shopverse/*"     { capabilities = ["create", "read", "update"] }
+          path "secret/metadata/shopverse/*" { capabilities = ["create", "read", "update"] }
+          path "secret/data/platform/*"      { capabilities = ["create", "read", "update"] }
+          path "secret/metadata/platform/*"  { capabilities = ["create", "read", "update"] }
+    auth:
+      - type: kubernetes
+        config:
+          kubernetes_host: https://kubernetes.default.svc
+        roles:
+          - name: external-secrets
+            bound_service_account_names: [external-secrets]
+            bound_service_account_namespaces: [external-secrets]
+            audience: vault
+            policies: [external-secrets]
+            ttl: 1h
+
+  ingress:
+    annotations:
+      cert-manager.io/cluster-issuer: shopverse-ca-issuer
+    spec:
+      ingressClassName: nginx
+      tls:
+        - hosts: [vault.shopverse.local]
+          secretName: vault-tls
+      rules:
+        - host: vault.shopverse.local
+          http:
+            paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: vault
+                    port:
+                      number: 8200

@@ -34,7 +34,7 @@ def stat(title, expr, unit="short", decimals=None, color="blue"):
         p["fieldConfig"]["defaults"]["decimals"] = decimals
     return p
 
-def ts(title, targets, unit="short", stack=False, desc=None):
+def ts(title, targets, unit="short", stack=False, desc=None, minmax=None):
     p = {"type": "timeseries", "title": title, "datasource": DS,
          "targets": [{"refId": chr(65 + i), "datasource": DS, "expr": e, "legendFormat": l} for i, (e, l) in enumerate(targets)],
          "fieldConfig": {"defaults": {"unit": unit, "custom": {"fillOpacity": 15, "lineWidth": 2, "showPoints": "never",
@@ -44,6 +44,8 @@ def ts(title, targets, unit="short", stack=False, desc=None):
                      "tooltip": {"mode": "multi", "sort": "desc"}}}
     if desc:
         p["description"] = desc
+    if minmax:
+        p["fieldConfig"]["defaults"]["min"], p["fieldConfig"]["defaults"]["max"] = minmax
     return p
 
 row("Business")
@@ -63,7 +65,7 @@ place([
 row("Traffic (RED)")
 place([
     (ts("Request rate", [(f'sum by (service) (rate(http_request_duration_seconds_count{{{SEL}}}[$__rate_interval]))', "{{service}}")], "reqps"), 8),
-    (ts("Error ratio (5xx)", [(f'sum by (service) (rate(http_request_duration_seconds_count{{{SEL},status_code=~"5.."}}[$__rate_interval])) / sum by (service) (rate(http_request_duration_seconds_count{{{SEL}}}[$__rate_interval]))', "{{service}}")], "percentunit"), 8),
+    (ts("Error ratio (5xx)", [(f'sum by (service) (rate(http_request_duration_seconds_count{{{SEL},status_code=~"5.."}}[$__rate_interval])) / sum by (service) (rate(http_request_duration_seconds_count{{{SEL}}}[$__rate_interval]))', "{{service}}")], "percentunit", minmax=(0, 1)), 8),
     (ts("Latency p95", [(f'histogram_quantile(0.95, sum by (service, le) (rate(http_request_duration_seconds_bucket{{{SEL}}}[$__rate_interval])))', "{{service}}")], "s"), 8),
 ], 8)
 slow = {"type": "table", "title": "Slowest routes (p95, 15m)", "datasource": DS,

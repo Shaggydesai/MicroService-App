@@ -1,5 +1,9 @@
-# Local development stack: `docker compose up --build` then open http://localhost:3000
-# With observability (Grafana on :3001): `docker compose --profile observability up --build`
+# LOCAL DEVELOPMENT ONLY - deployments go through Helm + Argo CD (see README / gitops/).
+# From the repo root:
+#   docker compose -f local-dev/docker-compose.yml up --build           -> http://localhost:3000
+#   PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040 \
+#   docker compose -f local-dev/docker-compose.yml --profile observability up --build   -> Grafana :3001
+# Observability image versions match what the platform charts deploy in the cluster.
 x-service-env: &service-env
   PYROSCOPE_SERVER_ADDRESS: ${PYROSCOPE_SERVER_ADDRESS:-}
   JWT_SECRET: ${JWT_SECRET:-local-dev-jwt-secret-change-me}
@@ -28,7 +32,7 @@ services:
 
   user-service:
     <<: *service
-    build: ./services/user-service
+    build: ../services/user-service
     image: shopverse/user-service:local
     environment:
       <<: *service-env
@@ -38,7 +42,7 @@ services:
 
   product-service:
     <<: *service
-    build: ./services/product-service
+    build: ../services/product-service
     image: shopverse/product-service:local
     environment:
       <<: *service-env
@@ -47,7 +51,7 @@ services:
 
   cart-service:
     <<: *service
-    build: ./services/cart-service
+    build: ../services/cart-service
     image: shopverse/cart-service:local
     environment:
       <<: *service-env
@@ -55,7 +59,7 @@ services:
 
   order-service:
     <<: *service
-    build: ./services/order-service
+    build: ../services/order-service
     image: shopverse/order-service:local
     environment:
       <<: *service-env
@@ -63,14 +67,14 @@ services:
 
   payment-service:
     <<: *service
-    build: ./services/payment-service
+    build: ../services/payment-service
     image: shopverse/payment-service:local
     environment:
       <<: *service-env
       MONGO_URI: mongodb://mongodb:27017/shopverse_payments
 
   api-gateway:
-    build: ./services/api-gateway
+    build: ../services/api-gateway
     image: shopverse/api-gateway:local
     restart: unless-stopped
     environment:
@@ -85,7 +89,7 @@ services:
       - "8080:8080"
 
   frontend:
-    build: ./frontend
+    build: ../frontend
     image: shopverse/frontend:local
     restart: unless-stopped
     environment:
@@ -97,7 +101,7 @@ services:
 
   # ---------- observability profile ----------
   prometheus:
-    image: prom/prometheus:v3.4.0
+    image: prom/prometheus:v3.15.0
     profiles: [observability]
     command: [--config.file=/etc/prometheus/prometheus.yml, --web.enable-lifecycle]
     volumes:
@@ -107,14 +111,14 @@ services:
       - "9090:9090"
 
   loki:
-    image: grafana/loki:3.5.0
+    image: grafana/loki:3.6.11
     profiles: [observability]
     command: [-config.file=/etc/loki/local-config.yaml]
     ports:
       - "3100:3100"
 
   alloy:
-    image: grafana/alloy:v1.8.3
+    image: grafana/alloy:v1.20.0
     profiles: [observability]
     command: [run, /etc/alloy/config.alloy, --server.http.listen-addr=0.0.0.0:12345]
     volumes:
@@ -123,20 +127,20 @@ services:
     depends_on: [loki]
 
   pyroscope:
-    image: grafana/pyroscope:1.13.4
+    image: grafana/pyroscope:2.3.1
     profiles: [observability]
     ports:
       - "4040:4040"
 
   grafana:
-    image: grafana/grafana:12.0.0
+    image: grafana/grafana:13.2.3
     profiles: [observability]
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./helm/shopverse/dashboards:/var/lib/grafana/dashboards:ro
+      - ../helm/shopverse/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "3001:3000"
     depends_on: [prometheus, loki, pyroscope]

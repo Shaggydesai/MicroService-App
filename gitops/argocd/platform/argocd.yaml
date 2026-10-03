@@ -1,0 +1,26 @@
+# Argo CD manages itself from gitops/bootstrap (self-management). Pruning is off on purpose:
+# a bad commit must never be able to delete Argo CD.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-40"
+  labels:
+    app.kubernetes.io/part-of: platform
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/Shaggydesai/MicroService-App.git
+    targetRevision: main
+    path: gitops/bootstrap
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

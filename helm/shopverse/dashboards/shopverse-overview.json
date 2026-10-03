@@ -656,7 +656,9 @@
             "stacking": {
               "mode": "none"
             }
-          }
+          },
+          "min": 0,
+          "max": 1
         },
         "overrides": []
       },

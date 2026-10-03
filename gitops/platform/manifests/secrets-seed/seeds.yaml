@@ -1,0 +1,226 @@
+# Declarative secret seeding: Password generator -> ExternalSecret (in-cluster Secret) -> PushSecret -> Vault.
+# No secret values live in Git. To rotate, change the value in Vault (vault kv patch ...); ESO syncs it to the apps.
+# shopverse-dev-seed: random values generated in-cluster, written to Vault secret/shopverse/dev exactly once.
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: Password
+metadata:
+  name: shopverse-dev-seed
+  namespace: external-secrets
+spec:
+  length: 32
+  digits: 8
+  symbols: 0          # URL-safe (the Mongo password is embedded in a connection string)
+  allowRepeat: true
+  noUpper: false
+  secretKeys: [jwt-secret, internal-token, admin-password, mongo-password]
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: shopverse-dev-seed
+  namespace: external-secrets
+spec:
+  refreshPolicy: CreatedOnce   # generate once; Vault is the source of truth afterwards
+  target:
+    name: shopverse-dev-seed
+    template:
+      mergePolicy: Merge
+      data:
+        admin-email: admin@shopverse.local
+        mongo-username: shopverse
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: Password
+          name: shopverse-dev-seed
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: shopverse-dev-seed
+  namespace: external-secrets
+spec:
+  updatePolicy: IfNotExists    # never overwrite a value that already exists in Vault (rotations happen in Vault)
+  deletionPolicy: None         # deleting this object must not delete the secret from Vault
+  refreshInterval: 1h
+  secretStoreRefs:
+    - kind: ClusterSecretStore
+      name: vault-backend
+  selector:
+    secret:
+      name: shopverse-dev-seed
+  data:
+    - match:
+        secretKey: jwt-secret
+        remoteRef:
+          remoteKey: shopverse/dev
+          property: jwt-secret
+    - match:
+        secretKey: internal-token
+        remoteRef:
+          remoteKey: shopverse/dev
+          property: internal-token
+    - match:
+        secretKey: admin-password
+        remoteRef:
+          remoteKey: shopverse/dev
+          property: admin-password
+    - match:
+        secretKey: mongo-password
+        remoteRef:
+          remoteKey: shopverse/dev
+          property: mongo-password
+    - match:
+        secretKey: admin-email
+        remoteRef:
+          remoteKey: shopverse/dev
+          property: admin-email
+    - match:
+        secretKey: mongo-username
+        remoteRef:
+          remoteKey: shopverse/dev
+          property: mongo-username
+---
+# shopverse-prod-seed: random values generated in-cluster, written to Vault secret/shopverse/prod exactly once.
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: Password
+metadata:
+  name: shopverse-prod-seed
+  namespace: external-secrets
+spec:
+  length: 32
+  digits: 8
+  symbols: 0          # URL-safe (the Mongo password is embedded in a connection string)
+  allowRepeat: true
+  noUpper: false
+  secretKeys: [jwt-secret, internal-token, admin-password, mongo-password]
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: shopverse-prod-seed
+  namespace: external-secrets
+spec:
+  refreshPolicy: CreatedOnce   # generate once; Vault is the source of truth afterwards
+  target:
+    name: shopverse-prod-seed
+    template:
+      mergePolicy: Merge
+      data:
+        admin-email: admin@shopverse.local
+        mongo-username: shopverse
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: Password
+          name: shopverse-prod-seed
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: shopverse-prod-seed
+  namespace: external-secrets
+spec:
+  updatePolicy: IfNotExists    # never overwrite a value that already exists in Vault (rotations happen in Vault)
+  deletionPolicy: None         # deleting this object must not delete the secret from Vault
+  refreshInterval: 1h
+  secretStoreRefs:
+    - kind: ClusterSecretStore
+      name: vault-backend
+  selector:
+    secret:
+      name: shopverse-prod-seed
+  data:
+    - match:
+        secretKey: jwt-secret
+        remoteRef:
+          remoteKey: shopverse/prod
+          property: jwt-secret
+    - match:
+        secretKey: internal-token
+        remoteRef:
+          remoteKey: shopverse/prod
+          property: internal-token
+    - match:
+        secretKey: admin-password
+        remoteRef:
+          remoteKey: shopverse/prod
+          property: admin-password
+    - match:
+        secretKey: mongo-password
+        remoteRef:
+          remoteKey: shopverse/prod
+          property: mongo-password
+    - match:
+        secretKey: admin-email
+        remoteRef:
+          remoteKey: shopverse/prod
+          property: admin-email
+    - match:
+        secretKey: mongo-username
+        remoteRef:
+          remoteKey: shopverse/prod
+          property: mongo-username
+---
+# grafana-admin-seed: random values generated in-cluster, written to Vault secret/platform/grafana exactly once.
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: Password
+metadata:
+  name: grafana-admin-seed
+  namespace: external-secrets
+spec:
+  length: 32
+  digits: 8
+  symbols: 0          # URL-safe (the Mongo password is embedded in a connection string)
+  allowRepeat: true
+  noUpper: false
+  secretKeys: [admin-password]
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: grafana-admin-seed
+  namespace: external-secrets
+spec:
+  refreshPolicy: CreatedOnce   # generate once; Vault is the source of truth afterwards
+  target:
+    name: grafana-admin-seed
+    template:
+      mergePolicy: Merge
+      data:
+        admin-user: admin
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: Password
+          name: grafana-admin-seed
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: grafana-admin-seed
+  namespace: external-secrets
+spec:
+  updatePolicy: IfNotExists    # never overwrite a value that already exists in Vault (rotations happen in Vault)
+  deletionPolicy: None         # deleting this object must not delete the secret from Vault
+  refreshInterval: 1h
+  secretStoreRefs:
+    - kind: ClusterSecretStore
+      name: vault-backend
+  selector:
+    secret:
+      name: grafana-admin-seed
+  data:
+    - match:
+        secretKey: admin-password
+        remoteRef:
+          remoteKey: platform/grafana
+          property: admin-password
+    - match:
+        secretKey: admin-user
+        remoteRef:
+          remoteKey: platform/grafana
+          property: admin-user

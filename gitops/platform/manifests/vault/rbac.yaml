@@ -1,0 +1,48 @@
+# Identity of the Vault pods. Bank-Vaults stores the unseal keys + root token in a Secret in this
+# namespace, so only Vault (and cluster admins) may read Secrets here.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault
+  namespace: vault
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: vault
+  namespace: vault
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vault
+  namespace: vault
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: vault
+subjects:
+  - kind: ServiceAccount
+    name: vault
+    namespace: vault
+---
+# Vault's Kubernetes auth method validates callers' tokens with the TokenReview API
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vault-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: vault
+    namespace: vault

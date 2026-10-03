@@ -4,7 +4,7 @@ global:
   imageTag: latest
 
 # Secrets come from Vault (secret/shopverse/dev) via External Secrets Operator.
-# Seed them once with scripts/vault-bootstrap.sh.
+# Initial values are generated and seeded declaratively (gitops/platform/manifests/secrets-seed).
 externalSecret:
   enabled: true
   remoteKey: shopverse/dev

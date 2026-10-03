@@ -1,5 +1,5 @@
 # Grafana admin login, stored in Vault at secret/platform/grafana
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: grafana-admin

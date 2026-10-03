@@ -1,28 +1,21 @@
-# HashiCorp Vault: source of truth for secrets (initialise/unseal with scripts/vault-bootstrap.sh)
+# The Vault instance itself (Bank-Vaults Vault CR + RBAC). Healthy once initialised and unsealed.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: vault
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-24"
+    argocd.argoproj.io/sync-wave: "-23"
   labels:
     app.kubernetes.io/part-of: platform
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: platform
-  sources:
-    - repoURL: https://helm.releases.hashicorp.com
-      chart: vault
-      targetRevision: 0.29.1
-      helm:
-        releaseName: vault
-        valueFiles:
-          - $values/gitops/platform/values/vault.yaml
-    - repoURL: https://github.com/Shaggydesai/MicroService-App.git
-      targetRevision: main
-      ref: values
+  source:
+    repoURL: https://github.com/Shaggydesai/MicroService-App.git
+    targetRevision: main
+    path: gitops/platform/manifests/vault
   destination:
     server: https://kubernetes.default.svc
     namespace: vault
@@ -32,7 +25,7 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
     retry:
       limit: 10
       backoff:

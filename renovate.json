@@ -1,21 +1,59 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
-  "labels": ["dependencies"],
+  "extends": [
+    "config:recommended"
+  ],
+  "labels": [
+    "dependencies"
+  ],
   "argocd": {
-    "fileMatch": ["^gitops/argocd/.+\\.ya?ml$"]
+    "managerFilePatterns": [
+      "/^gitops/argocd/.+\\.ya?ml$/"
+    ]
   },
   "packageRules": [
     {
-      "description": "Group platform Helm chart bumps (MetalLB, cert-manager, Vault, ESO, monitoring) into one PR",
-      "matchManagers": ["argocd"],
+      "description": "Group platform version bumps (Argo CD, MetalLB, cert-manager, Vault, ESO, monitoring) into one PR",
+      "matchManagers": [
+        "argocd",
+        "custom.regex"
+      ],
       "groupName": "platform charts"
     },
     {
       "description": "Group app npm dependency updates",
-      "matchManagers": ["npm"],
+      "matchManagers": [
+        "npm"
+      ],
       "groupName": "npm dependencies",
-      "schedule": ["before 6am on monday"]
+      "schedule": [
+        "before 6am on monday"
+      ]
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Argo CD version in the bootstrap kustomization",
+      "managerFilePatterns": [
+        "/^gitops/bootstrap/kustomization\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "argoproj/argo-cd/(?<currentValue>v[\\d.]+)/manifests/install\\.yaml"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "argoproj/argo-cd"
+    },
+    {
+      "customType": "regex",
+      "description": "Vault server image in the Bank-Vaults Vault CR",
+      "managerFilePatterns": [
+        "/^gitops/platform/manifests/vault/.+\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "image: (?<depName>hashicorp/vault):(?<currentValue>[\\d.]+)"
+      ],
+      "datasourceTemplate": "docker"
     }
   ]
 }

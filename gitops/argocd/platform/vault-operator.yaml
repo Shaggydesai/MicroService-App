@@ -1,11 +1,11 @@
-# ingress-nginx: gets its external IP from MetalLB
+# Bank-Vaults operator: runs Vault from a declarative Vault CR (init, unseal, config - no manual steps)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: ingress-nginx
+  name: vault-operator
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "-25"
+    argocd.argoproj.io/sync-wave: "-24"
   labels:
     app.kubernetes.io/part-of: platform
   finalizers:
@@ -13,19 +13,19 @@ metadata:
 spec:
   project: platform
   sources:
-    - repoURL: https://kubernetes.github.io/ingress-nginx
-      chart: ingress-nginx
-      targetRevision: 4.15.1
+    - repoURL: ghcr.io/bank-vaults/helm-charts
+      chart: vault-operator
+      targetRevision: 1.24.1
       helm:
-        releaseName: ingress-nginx
+        releaseName: vault-operator
         valueFiles:
-          - $values/gitops/platform/values/ingress-nginx.yaml
+          - $values/gitops/platform/values/vault-operator.yaml
     - repoURL: https://github.com/Shaggydesai/MicroService-App.git
       targetRevision: main
       ref: values
   destination:
     server: https://kubernetes.default.svc
-    namespace: ingress-nginx
+    namespace: vault
   syncPolicy:
     automated:
       prune: true

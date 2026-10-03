@@ -15,7 +15,7 @@ global:
 # Keys: jwt-secret, internal-token, admin-email, admin-password, mongo-username, mongo-password
 externalSecret:
   enabled: false
-  apiVersion: external-secrets.io/v1beta1
+  apiVersion: external-secrets.io/v1
   refreshInterval: 1h
   secretStoreRef:
     kind: ClusterSecretStore

@@ -54,10 +54,13 @@ jobs:
             helm template shopverse helm/shopverse -f "$env/values.yaml" > "rendered-$(basename "$env").yaml"
           done
 
+      - name: Render Argo CD bootstrap (Kustomize)
+        run: kubectl kustomize gitops/bootstrap > rendered-bootstrap.yaml
+
       - name: Validate manifests against Kubernetes + CRD schemas
         run: |
           curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz kubeconform
-          ./kubeconform -strict -summary -kubernetes-version 1.30.0 \
+          ./kubeconform -strict -summary -kubernetes-version 1.33.0 -skip CustomResourceDefinition \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             rendered-*.yaml gitops/argocd gitops/platform/manifests

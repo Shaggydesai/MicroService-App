@@ -1,0 +1,4 @@
+# Watches Vault CRs in all namespaces (the instance lives in gitops/platform/manifests/vault)
+resources:
+  requests: { cpu: 25m, memory: 64Mi }
+  limits: { memory: 256Mi }

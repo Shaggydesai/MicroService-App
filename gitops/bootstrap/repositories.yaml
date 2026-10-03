@@ -1,0 +1,13 @@
+# Public OCI Helm registry used by a platform app. Declared here so Argo CD can pull from it
+# (no credentials - public chart). Add private repos the same way, via an ExternalSecret.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: repo-bank-vaults-oci
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  name: bank-vaults
+  type: helm
+  url: ghcr.io/bank-vaults/helm-charts
+  enableOCI: "true"

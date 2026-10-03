@@ -1,0 +1,15 @@
+# Argo CD itself, declared in Git.
+#   First install (the only imperative step):  kubectl apply -k gitops/bootstrap --server-side
+#   After that the `argocd` Application (gitops/argocd/platform/argocd.yaml) manages this directory,
+#   so upgrading Argo CD = changing the version below and merging.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argocd
+resources:
+  - namespace.yaml
+  - https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.3/manifests/install.yaml
+  - ingress.yaml
+  - repositories.yaml
+patches:
+  - path: argocd-cm.yaml
+  - path: argocd-cmd-params-cm.yaml
