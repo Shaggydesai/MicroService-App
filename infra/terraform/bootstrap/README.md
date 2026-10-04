@@ -28,6 +28,23 @@ GitHub job ──(OIDC token: repo, ref, environment)──► GCP STS ──che
    only jobs in environment "gcp-infra" (sub claim) ──► may impersonate tf-apply
 ```
 
+## Before you start (one time)
+
+Terraform reads the project's details (`data "google_project"`) before it can enable any API,
+and that read needs the Cloud Resource Manager API, which is off in new projects. Enable it once by hand:
+
+```bash
+gcloud services enable cloudresourcemanager.googleapis.com serviceusage.googleapis.com
+```
+
+Without it, `terraform plan` fails with `Error 403: Cloud Resource Manager API has not been used in project ...`.
+Everything else is enabled by `apis.tf`.
+
+You can run this stage from Cloud Shell or from your own machine (WSL, Linux, macOS). On your own machine,
+install Terraform and the Google Cloud CLI, then log in twice: `gcloud auth login` for gcloud, and
+`gcloud auth application-default login` followed by `gcloud auth application-default set-quota-project <project-id>`
+for Terraform. On the consent screen, tick every permission box.
+
 ## Run it (Cloud Shell recommended)
 
 Cloud Shell already has `terraform`, `gcloud` and `git`, and is logged in as you, so you don't need to install anything on Windows.
