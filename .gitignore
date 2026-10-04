@@ -4,3 +4,12 @@ dist/
 *.log
 .DS_Store
 helm/*/charts/*.tgz
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+*.tfplan

@@ -1,0 +1,6 @@
+# Copy to terraform.tfvars (git-ignored) and fill in.
+project_id         = "shopverse-lab"
+region             = "asia-south1"
+billing_account_id = "XXXXXX-XXXXXX-XXXXXX" # Billing > Overview, top of the page
+budget_amount      = 2500
+budget_currency    = "INR"
