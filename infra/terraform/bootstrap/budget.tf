@@ -1,12 +1,15 @@
 # The budget alert as code. Credits are excluded so alerts reflect real usage while the
 # free-trial credit is paying.
 locals {
+  # Keep this order: the Budget API stores rules sorted (CURRENT_SPEND first, then
+  # FORECASTED_SPEND, each by percent) and Terraform compares them by position, so any
+  # other order shows a change on every plan.
   budget_thresholds = [
     { percent = 0.25, basis = "CURRENT_SPEND" },
+    { percent = 1.00, basis = "CURRENT_SPEND" },
     { percent = 0.50, basis = "FORECASTED_SPEND" },
     { percent = 0.90, basis = "FORECASTED_SPEND" },
     { percent = 1.00, basis = "FORECASTED_SPEND" },
-    { percent = 1.00, basis = "CURRENT_SPEND" },
   ]
 }
 
