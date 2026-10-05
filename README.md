@@ -227,7 +227,7 @@ These versions were checked against the upstream chart indexes and rendered with
 
 1. Installs and syntax-checks the services, builds the frontend, then lints and renders the Helm chart for each environment.
 2. Renders the Argo CD bootstrap with Kustomize. Validates every manifest (app, platform and Argo CD) against the Kubernetes and CRD schemas with kubeconform, and checks the alert rules with `promtool`.
-3. On `main`, builds the 7 multi-arch images and pushes them to GHCR, then commits the new tag to the dev environment (the GitOps step).
+3. On `main`, builds the 7 images (linux/amd64) and pushes them to GHCR, then commits the new tag to the dev environment (the GitOps step).
 
 `.github/workflows/promote.yaml` checks that the images exist, then opens the prod promotion PR. For it to work, enable **Settings → Actions → Allow GitHub Actions to create pull requests**. If `main` is protected, let `github-actions[bot]` push the dev tag bump.
 
