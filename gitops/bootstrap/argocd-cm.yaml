@@ -3,7 +3,7 @@ kind: ConfigMap
 metadata:
   name: argocd-cm
 data:
-  url: https://argocd.shopverse.local
+  url: https://argocd.8-234-83-188.sslip.io
   # Track resources by annotation (avoids clashes with Helm's app.kubernetes.io/instance label)
   application.resourceTrackingMethod: annotation
   # Make the app-of-apps wait for each Application to be Healthy before the next sync wave,

@@ -1,4 +1,4 @@
-# App-of-apps: apply this once (kubectl apply -f gitops/argocd/root-app.yaml) and Argo CD
+# App-of-apps: applied once by scripts/argocd-bootstrap.sh, then Argo CD
 # takes over everything under gitops/argocd/apps from then on.
 apiVersion: argoproj.io/v1alpha1
 kind: Application

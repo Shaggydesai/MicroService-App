@@ -10,13 +10,15 @@ ShopVerse is a Flipkart/Amazon-style shopping app built as microservices: a Reac
 | What | Declared in Git as | Applied by |
 |---|---|---|
 | Argo CD itself (version, config, health checks, ingress) | `gitops/bootstrap/` (Kustomize) | Argo CD (manages itself) |
-| Cluster platform: MetalLB, ingress-nginx, cert-manager, Vault, ESO, Prometheus/Grafana, Loki, Alloy, Pyroscope | `gitops/argocd/platform/*.yaml` and `gitops/platform/` | Argo CD, in sync-wave order |
+| Cluster platform: ingress-nginx, cert-manager, Vault, ESO, Prometheus/Grafana, Loki, Alloy, Pyroscope (MetalLB optional, for bare metal) | `gitops/argocd/platform/*.yaml` and `gitops/platform/` | Argo CD, in sync-wave order |
 | Vault init, unseal, KV engine, auth methods, policies, roles | `gitops/platform/manifests/vault/vault.yaml` (Bank-Vaults `Vault` CR) | Bank-Vaults operator |
 | Initial secret values (generated, **never stored in Git**) | `gitops/platform/manifests/secrets-seed/` (ESO generators and PushSecrets) | External Secrets Operator, which writes them to Vault once |
 | The application (all 7 services and MongoDB) | `helm/shopverse/` and `gitops/environments/<env>/values.yaml` | Argo CD |
 | Which version runs where | `global.imageTag` in each environment's values file | CI (dev) or a reviewed PR (prod) |
 
-There is **no manual `helm install`, no `kubectl apply` of workloads and no setup script**. The only imperative step is the one-time bootstrap, which hands the cluster to Argo CD.
+| Cloud infrastructure on GCP (GKE cluster, network, KMS key, static IP, CI identity, budget) | `infra/terraform/` | Terraform |
+
+There is **no manual `helm install`, no `kubectl apply` of workloads and no setup script**. The only imperative step is the one-time bootstrap, which hands the cluster to Argo CD; on the GCP lab, `terraform apply` does it for you.
 
 ## Architecture
 
@@ -30,7 +32,7 @@ flowchart TB
   CI[GitHub Actions<br/>build → GHCR → bump dev tag] -->|commit| APP
   subgraph K8s["Kubernetes cluster"]
     ARGO[Argo CD] -->|self-manages| ARGO
-    ARGO --> P1[MetalLB · ingress-nginx · cert-manager]
+    ARGO --> P1[ingress-nginx · cert-manager]
     ARGO --> P2[Bank-Vaults Vault · External Secrets]
     ARGO --> P3[Prometheus · Grafana · Loki · Alloy · Pyroscope]
     ARGO --> SV[ShopVerse dev / prod]
@@ -67,9 +69,12 @@ gitops/
     apps/                    shopverse-dev, shopverse-prod
   platform/
     values/                  Helm values per platform component
-    manifests/               MetalLB pool, ClusterIssuers, Vault CR + RBAC, ClusterSecretStore,
+    manifests/               ClusterIssuers, Vault CR + RBAC, ClusterSecretStore,
                              secret seeding, Grafana admin ExternalSecret
   environments/dev|prod/     App values per environment (image tag, hosts, scaling)
+  optional/bare-metal/       MetalLB, for clusters without a cloud load balancer (not synced on GKE)
+infra/terraform/             GCP: bootstrap (APIs, state, CI identity, budget) and lab (persistent + cluster)
+scripts/                     argocd-bootstrap.sh (GitOps hand-off), lab-down.sh, lab-status.sh
 helm/shopverse/              The application chart (+ Grafana dashboard JSON and its generator)
 services/, frontend/         Source code. Each component has its own Dockerfile
 .github/workflows/           CI: test, build and push to GHCR, bump dev tag, promote-to-prod PR
@@ -93,34 +98,37 @@ Changing a resource with `kubectl` doesn't stick: `selfHeal` reverts it to what 
 
 ## Bootstrap a cluster (one time)
 
+The reference setup is a GKE lab on GCP, created with Terraform. Step-by-step instructions, costs and teardown:
+[`infra/terraform/bootstrap`](infra/terraform/bootstrap/README.md) (once per project) and
+[`infra/terraform/envs/lab`](infra/terraform/envs/lab/README.md) (each session).
+
 **Prerequisites:**
-- A Kubernetes cluster, version 1.30 or newer (bare-metal or on-prem is fine; MetalLB provides load balancers)
-- A default StorageClass for PVCs
-- `kubectl` access as cluster-admin
+- The repository and the GHCR packages are **public**, so Argo CD and the kubelet need no credentials. For a private setup, add the repository and pull-secret credentials as Secrets labelled `argocd.argoproj.io/secret-type: repository`, the same way `gitops/bootstrap/repositories.yaml` does.
+- The `gitops/` changes you want are merged to `main` (Argo CD deploys from `main`), and CI has pushed images for dev.
+- `kubectl` and `gcloud` with `gke-gcloud-auth-plugin` on the machine that runs Terraform.
 
-### 1. Adapt the config to your network, then commit and push
-
-| File | Change |
-|---|---|
-| `gitops/platform/manifests/metallb/address-pool.yaml` | A free IP range on your node network |
-| `gitops/platform/values/ingress-nginx.yaml` | `metallb.universe.tf/loadBalancerIPs`: one IP from that range |
-| `gitops/platform/manifests/cert-manager/cluster-issuers.yaml` | Your email for Let's Encrypt |
-| `gitops/environments/prod/values.yaml` | Your real domain (`ingress.host`) |
-| `repoURL` in `gitops/argocd/**` | Only if you fork the repo |
-
-The repository and the GHCR packages should be **public**, so Argo CD and the kubelet need no credentials. For a private setup, add the repository and pull-secret credentials as Secrets labelled `argocd.argoproj.io/secret-type: repository`, the same way `gitops/bootstrap/repositories.yaml` does.
-
-### 2. Hand the cluster to Argo CD
+### 1. Create the cluster and hand it to Argo CD
 
 ```bash
-kubectl apply -k gitops/bootstrap --server-side          # installs Argo CD from Git
-kubectl -n argocd rollout status deploy/argocd-server
-kubectl apply -f gitops/argocd/root-app.yaml             # app-of-apps: everything else comes from Git
+cd infra/terraform/envs/lab/cluster
+terraform plan -out=cluster.tfplan
+terraform apply cluster.tfplan
 ```
 
-If the first command reports `no matches for kind`, run it once more. That just means the CRDs were not registered yet.
+After the cluster and node pool exist, Terraform runs [`scripts/argocd-bootstrap.sh`](scripts/argocd-bootstrap.sh) once
+(`terraform_data.argocd_bootstrap`). The script:
 
-### 3. Watch it converge (about 10–15 minutes)
+```bash
+kubectl apply -k gitops/bootstrap --server-side --force-conflicts   # installs Argo CD from Git (retried)
+kubectl -n argocd rollout status ...                                # waits for Argo CD
+kubectl apply -f gitops/argocd/root-app.yaml                        # app-of-apps: everything else comes from Git
+```
+
+From then on Argo CD owns everything in the cluster, Argo CD included; Terraform owns only the cloud resources.
+Re-run the hand-off by hand with `make argocd-bootstrap`. On any other cluster (bare metal, kind, another cloud),
+run the same three commands yourself and see [`gitops/optional/bare-metal`](gitops/optional/bare-metal/README.md).
+
+### 2. Watch it converge (about 10–15 minutes)
 
 ```bash
 kubectl -n argocd get applications -w
@@ -132,30 +140,45 @@ Argo CD syncs the Applications wave by wave. Each wave waits until the previous 
 |---|---|---|
 | -40 | `argocd` | Argo CD starts managing itself from `gitops/bootstrap` |
 | -30 | `prometheus-operator-crds` | Monitoring CRDs, so later charts can ship ServiceMonitors |
-| -29, -28 | `metallb`, `metallb-config` | L2 load balancer and address pool |
-| -27, -26 | `cert-manager`, `cert-manager-config` | Private CA (`shopverse-ca-issuer`) and Let's Encrypt issuers |
-| -25 | `ingress-nginx` | Gets its external IP from MetalLB |
-| -24, -23 | `vault-operator`, `vault` | Bank-Vaults creates Vault, **initialises and unseals it**, then applies the KV engine, Kubernetes auth, policy and role from the CR |
+| -27, -26 | `cert-manager`, `cert-manager-config` | Let's Encrypt issuers and a private CA (`shopverse-ca-issuer`) |
+| -25 | `ingress-nginx` | One Google Cloud load balancer on the reserved static IP `8.234.83.188` |
+| -24, -23 | `vault-operator`, `vault` | Bank-Vaults creates Vault, **initialises it and auto-unseals it with Cloud KMS**, then applies the KV engine, Kubernetes auth, policy and role from the CR |
 | -22, -21 | `external-secrets`, `external-secrets-config` | ESO and the `vault-backend` ClusterSecretStore |
 | -20 | `secrets-seed` | Generates random app and Grafana secrets in-cluster and pushes them into Vault (once) |
 | -19 | `monitoring-config` | Grafana admin credentials pulled from Vault |
 | -18, -17 | `kube-prometheus-stack`, `loki`, `pyroscope`, `alloy` | Metrics, dashboards, alerts, logs and profiles |
 | 0 | `shopverse-dev`, `shopverse-prod` | The app. Its secrets come from Vault through ExternalSecrets |
 
-Next, point DNS (or `/etc/hosts`) at the ingress IP, and trust the private CA so the `.local` hostnames get valid TLS:
+### 3. Open the UIs
 
-```bash
-echo "192.168.1.240 shop-dev.shopverse.local argocd.shopverse.local grafana.shopverse.local prometheus.shopverse.local vault.shopverse.local" | sudo tee -a /etc/hosts
-kubectl -n cert-manager get secret shopverse-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > shopverse-ca.crt   # import into your OS/browser
-```
+No DNS setup is needed: [sslip.io](https://sslip.io) resolves `<anything>.8-234-83-188.sslip.io` to `8.234.83.188`.
+cert-manager gets a Let's Encrypt certificate for each host (HTTP-01), so browsers trust them.
 
 | UI | URL | Login |
 |---|---|---|
-| Storefront (dev) | https://shop-dev.shopverse.local | `admin@shopverse.local` + `kubectl -n shopverse-dev get secret shopverse-secrets -o jsonpath='{.data.admin-password}' \| base64 -d` |
-| Argo CD | https://argocd.shopverse.local | `admin` + `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' \| base64 -d` |
-| Grafana | https://grafana.shopverse.local | `admin` + `kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' \| base64 -d` |
-| Prometheus | https://prometheus.shopverse.local | – |
-| Vault | https://vault.shopverse.local | Root token: `kubectl -n vault get secret vault-unseal-keys -o jsonpath='{.data.vault-root}' \| base64 -d` |
+| Storefront (dev) | https://shop-dev.8-234-83-188.sslip.io | `admin@shopverse.local` + `kubectl -n shopverse-dev get secret shopverse-secrets -o jsonpath='{.data.admin-password}' \| base64 -d` |
+| Storefront (prod) | https://shop.8-234-83-188.sslip.io | `admin@shopverse.local` + the same command in `shopverse-prod` |
+| Argo CD | https://argocd.8-234-83-188.sslip.io | `admin` + `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' \| base64 -d` |
+| Grafana | https://grafana.8-234-83-188.sslip.io | `admin` + `kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' \| base64 -d` |
+| Prometheus | https://prometheus.8-234-83-188.sslip.io | – |
+| Vault | https://vault.8-234-83-188.sslip.io | Root token (see below) |
+
+Vault's root token is stored encrypted in the unseal bucket. Decrypt it with the KMS key:
+
+```bash
+gcloud storage cat gs://vault-unseal-684852499708/vault-root |
+  gcloud kms decrypt --project shopverse-lab --location asia-south1 --keyring shopverse-vault --key vault-unseal \
+    --ciphertext-file=- --plaintext-file=-; echo
+```
+
+If that returns `PERMISSION_DENIED`, your account lacks `cloudkms.cryptoKeyVersions.useToDecrypt` on the key
+(Terraform granted it only to `vault-unseal@`); grant yourself `roles/cloudkms.cryptoKeyDecrypter` on that key.
+
+**If a certificate stays not Ready:** sslip.io isn't on the Public Suffix List, so Let's Encrypt's limit of 50
+certificates per registered domain per week is shared by every sslip.io user. Check with
+`kubectl get certificate -A` and `kubectl describe order -A`; on `rateLimited`, change the
+`cert-manager.io/cluster-issuer` annotations to `letsencrypt-staging` (untrusted, but proves the flow) or
+`shopverse-ca-issuer`, or use your own domain. Each is a one-line Git change per Ingress.
 
 ## Secrets: Vault as the source of truth, with no values in Git
 
@@ -168,7 +191,7 @@ Password generator ─► ExternalSecret (refreshPolicy: CreatedOnce) ─► Pus
 - **Vault** runs with integrated (raft) storage. The Bank-Vaults operator initialises and unseals it, and keeps re-applying `externalConfig` from Git: the KV v2 engine, Kubernetes auth, and the `external-secrets` policy and role.
 - **Initial values** are generated in-cluster (32 random characters each) and written to Vault only if the key doesn't already exist. Vault stays authoritative after that: re-syncing never overwrites a value.
 - **Rotating** a value is a change to the secret data, not to configuration, so it happens in Vault: `vault kv patch secret/shopverse/prod jwt-secret=<new>`. ESO syncs it within an hour (annotate the ExternalSecret with `force-sync=$(date +%s)` to sync now), then run `kubectl rollout restart deploy -n shopverse-prod`.
-- **Production hardening:** Bank-Vaults keeps the unseal keys in the `vault-unseal-keys` Secret (namespace `vault`). On a real cluster, switch `unsealConfig` to a cloud KMS or Vault Transit; it's still the same declarative block. Also restrict who can read Secrets in that namespace.
+- **Auto-unseal with Cloud KMS:** Bank-Vaults encrypts the unseal keys and root token with the `vault-unseal` KMS key and stores them in the `vault-unseal-<project-number>` bucket. The Vault pods reach both through Workload Identity (`vault/vault` → `vault-unseal@`), so there are no key files and nothing sensitive in Kubernetes Secrets. Without a cloud KMS, `unsealConfig.kubernetes` keeps them in a Secret instead (see the comment in `vault.yaml`).
 
 ## Observability
 
@@ -190,7 +213,7 @@ These versions were checked against the upstream chart indexes and rendered with
 | Component | Version | Component | Version |
 |---|---|---|---|
 | Argo CD | v3.5.3 | kube-prometheus-stack | 91.9.0 (Prometheus v3.15, Grafana 13.2) |
-| MetalLB | 0.16.1 | prometheus-operator-crds | 32.0.1 |
+| MetalLB (optional) | 0.16.1 | prometheus-operator-crds | 32.0.1 |
 | cert-manager | v1.21.2 | Loki | 7.3.0 (Loki 3.6) |
 | ingress-nginx | 4.15.1 | Alloy | 1.13.0 (Alloy v1.20) |
 | Bank-Vaults operator | 1.24.1 (Vault 2.0.1) | Pyroscope | 2.3.1 |

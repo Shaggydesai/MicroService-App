@@ -35,15 +35,22 @@ spec:
     - name: vault-raft
       mountPath: /vault/file
 
-  # Unseal keys + root token are kept in the Secret "vault-unseal-keys" in this namespace.
-  # Fine for a lab/on-prem cluster; for production switch to a KMS-backed unseal
-  # (unsealConfig.aws / google / azure / vault-transit) - still declarative, just this block.
+  # Unseal keys + root token are encrypted with Cloud KMS and stored in a GCS bucket, both created by
+  # Terraform (infra/terraform/envs/lab/persistent). The pods reach them as vault-unseal@ through
+  # Workload Identity (annotation on the "vault" ServiceAccount in rbac.yaml) - no key files anywhere.
+  # Bare metal / no cloud KMS: replace the google block with
+  #   kubernetes:
+  #     secretNamespace: vault
   unsealConfig:
     options:
       preFlightChecks: true
       storeRootToken: true
-    kubernetes:
-      secretNamespace: vault
+    google:
+      kmsProject: shopverse-lab
+      kmsLocation: asia-south1
+      kmsKeyRing: shopverse-vault
+      kmsCryptoKey: vault-unseal
+      storageBucket: vault-unseal-684852499708
 
   config:
     disable_mlock: true
@@ -95,14 +102,14 @@ spec:
 
   ingress:
     annotations:
-      cert-manager.io/cluster-issuer: shopverse-ca-issuer
+      cert-manager.io/cluster-issuer: letsencrypt-prod
     spec:
       ingressClassName: nginx
       tls:
-        - hosts: [vault.shopverse.local]
+        - hosts: [vault.8-234-83-188.sslip.io]
           secretName: vault-tls
       rules:
-        - host: vault.shopverse.local
+        - host: vault.8-234-83-188.sslip.io
           http:
             paths:
               - path: /

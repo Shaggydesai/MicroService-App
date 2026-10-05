@@ -19,7 +19,7 @@ spec:
       helm:
         releaseName: metallb
         valueFiles:
-          - $values/gitops/platform/values/metallb.yaml
+          - $values/gitops/optional/bare-metal/values/metallb.yaml
     - repoURL: https://github.com/Shaggydesai/MicroService-App.git
       targetRevision: main
       ref: values

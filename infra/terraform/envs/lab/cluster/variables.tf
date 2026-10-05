@@ -39,3 +39,9 @@ variable "node_disk_size_gb" {
   type        = number
   default     = 50
 }
+
+variable "enable_argocd_bootstrap" {
+  description = "Install Argo CD and the root app right after the cluster is created (scripts/argocd-bootstrap.sh). Set false for a bare cluster."
+  type        = bool
+  default     = true
+}

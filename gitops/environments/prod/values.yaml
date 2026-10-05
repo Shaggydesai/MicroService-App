@@ -13,7 +13,7 @@ secrets:
 ingress:
   enabled: true
   className: nginx
-  host: shop.example.com   # EDIT ME: your public domain, pointed at the MetalLB IP of ingress-nginx
+  host: shop.8-234-83-188.sslip.io   # sslip.io resolves this name to the ingress static IP; use your own domain if you have one
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
   tls:

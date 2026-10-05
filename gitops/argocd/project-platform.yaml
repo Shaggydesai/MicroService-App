@@ -5,7 +5,7 @@ metadata:
   name: platform
   namespace: argocd
 spec:
-  description: Shared cluster platform - MetalLB, ingress, cert-manager, Vault, ESO, monitoring
+  description: Shared cluster platform - ingress, cert-manager, Vault, ESO, monitoring (MetalLB optional, see gitops/optional)
   sourceRepos:
     - https://github.com/Shaggydesai/MicroService-App.git
     - https://metallb.github.io/metallb

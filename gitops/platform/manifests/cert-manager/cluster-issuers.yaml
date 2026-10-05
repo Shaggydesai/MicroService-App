@@ -6,7 +6,7 @@ metadata:
 spec:
   selfSigned: {}
 ---
-# 2) A private root CA for internal / dev hostnames (*.shopverse.local)
+# 2) A private root CA for internal hostnames, and the fallback when Let's Encrypt is rate-limited (see 3)
 #    Trust it locally: kubectl -n cert-manager get secret shopverse-root-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > shopverse-ca.crt
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -34,8 +34,11 @@ spec:
   ca:
     secretName: shopverse-root-ca
 ---
-# 3) Public certificates for real domains (HTTP-01 through ingress-nginx).
-#    EDIT ME: set your email. Use staging first to avoid Let's Encrypt rate limits.
+# 3) Public certificates (HTTP-01 through ingress-nginx). All Ingresses use letsencrypt-prod.
+#    sslip.io is not on the Public Suffix List, so Let's Encrypt's limit of 50 certificates per
+#    registered domain per week is shared with every sslip.io user. If a Certificate stays not Ready
+#    and `kubectl describe order -A` says "rateLimited", switch the Ingress annotations to
+#    letsencrypt-staging (untrusted, but proves the flow) or shopverse-ca-issuer, or use your own domain.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -43,7 +46,7 @@ metadata:
 spec:
   acme:
     server: https://acme-staging-v02.api.letsencrypt.org/directory
-    email: admin@example.com
+    email: sagar.d.desai1994@gmail.com   # expiry and problem notices from Let's Encrypt
     privateKeySecretRef:
       name: letsencrypt-staging-account
     solvers:
@@ -58,7 +61,7 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: admin@example.com
+    email: sagar.d.desai1994@gmail.com   # expiry and problem notices from Let's Encrypt
     privateKeySecretRef:
       name: letsencrypt-prod-account
     solvers:

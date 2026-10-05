@@ -8,6 +8,7 @@ on:
       - "gitops/environments/**"
       - "gitops/platform/**"
       - "gitops/argocd/**"
+      - "gitops/optional/**"
       - "**.md"
   pull_request:
     branches: [main]
@@ -63,7 +64,8 @@ jobs:
           ./kubeconform -strict -summary -kubernetes-version 1.33.0 -skip CustomResourceDefinition \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-            rendered-*.yaml gitops/argocd gitops/platform/manifests
+            rendered-*.yaml gitops/argocd gitops/platform/manifests \
+            gitops/optional/bare-metal/argocd gitops/optional/bare-metal/manifests
 
       - name: Check Prometheus alert rules
         run: |

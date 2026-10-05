@@ -15,7 +15,7 @@ spec:
   source:
     repoURL: https://github.com/Shaggydesai/MicroService-App.git
     targetRevision: main
-    path: gitops/platform/manifests/metallb
+    path: gitops/optional/bare-metal/manifests
   destination:
     server: https://kubernetes.default.svc
     namespace: metallb-system

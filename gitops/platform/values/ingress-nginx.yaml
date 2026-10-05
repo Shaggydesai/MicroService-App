@@ -2,9 +2,10 @@ controller:
   replicaCount: 2
   service:
     type: LoadBalancer
-    # Pin a stable IP from the MetalLB pool so DNS can point at it
-    annotations:
-      metallb.universe.tf/loadBalancerIPs: 192.168.1.240
+    # The regional static IP reserved by Terraform (infra/terraform/envs/lab/persistent, output ingress_ip).
+    # GKE attaches it to the load balancer, so the sslip.io hostnames never change between cluster rebuilds.
+    # Bare metal instead: remove this line and see gitops/optional/bare-metal/README.md.
+    loadBalancerIP: 8.234.83.188
     externalTrafficPolicy: Local
   config:
     # JSON access logs -> easy to query in Loki
