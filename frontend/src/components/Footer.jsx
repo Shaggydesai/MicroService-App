@@ -4,7 +4,7 @@ export default function Footer() {
       <div className="footer-inner">
         <div>
           <h4>ABOUT</h4>
-          <p>ShopVerse is a demo microservices e-commerce platform.</p>
+          <p>ShopVerse is a demo microservices e-commerce platform, deployed by GitOps (Argo CD).</p>
         </div>
         <div>
           <h4>HELP</h4>
