@@ -68,9 +68,10 @@ make lab-down       # from the repo root
 
 1. Deletes the Argo CD root app, so Argo CD removes its workloads.
 2. Deletes LoadBalancer Services and PVCs. Kubernetes then deletes their cloud load balancers and disks, which Terraform doesn't know about.
-3. Runs `terraform destroy` on the cluster layer.
-4. Empties the Vault unseal bucket (Vault's data is gone with the cluster).
-5. Runs `make lab-status`, which lists anything that could still cost money.
+3. Waits until GKE has removed the load balancer's forwarding rule and `k8s-*` firewall rules (deleting any leftover rule), since a leftover rule would block deleting the VPC.
+4. Runs `terraform destroy` on the cluster layer.
+5. Empties the Vault unseal bucket (Vault's data is gone with the cluster).
+6. Runs `make lab-status`, which lists anything that could still cost money.
 
 **Expected after teardown:** no clusters, instances, disks or forwarding rules. One address, `shopverse-ingress`, stays in status `RESERVED`; that's kept on purpose.
 

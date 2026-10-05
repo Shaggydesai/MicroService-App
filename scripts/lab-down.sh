@@ -21,20 +21,20 @@ read -rp "Type the cluster name to confirm: " answer
 if gcloud container clusters describe "$CLUSTER" --zone "$ZONE" --project "$PROJECT" >/dev/null 2>&1; then
   gcloud container clusters get-credentials "$CLUSTER" --zone "$ZONE" --project "$PROJECT"
 
-  echo "==> 1/4 Removing the GitOps root app (Argo CD deletes everything it manages)"
+  echo "==> 1/5 Removing the GitOps root app (Argo CD deletes everything it manages)"
   if kubectl -n argocd get application shopverse-root >/dev/null 2>&1; then
     kubectl -n argocd delete application shopverse-root --wait=true --timeout=15m || true
   else
     echo "    (no Argo CD root app, skipping)"
   fi
 
-  echo "==> 2/4 Deleting LoadBalancer Services (their cloud load balancers)"
+  echo "==> 2/5 Deleting LoadBalancer Services (their cloud load balancers)"
   kubectl get svc -A -o jsonpath='{range .items[?(@.spec.type=="LoadBalancer")]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' |
     while read -r ns name; do
       [[ -n "$ns" ]] && kubectl -n "$ns" delete svc "$name" --wait=true --timeout=5m
     done
 
-  echo "==> 3/4 Deleting PersistentVolumeClaims (their disks)"
+  echo "==> 3/5 Deleting PersistentVolumeClaims (their disks)"
   kubectl delete pvc --all -A --wait=true --timeout=10m || true
   for _ in $(seq 1 30); do
     remaining=$(kubectl get pv --no-headers 2>/dev/null | wc -l)
@@ -46,7 +46,28 @@ else
   echo "Cluster not found; skipping in-cluster cleanup."
 fi
 
-echo "==> 4/4 terraform destroy (cluster layer)"
+# GKE's service controller (running inside the cluster) removes a load balancer's forwarding rule,
+# target pool, health check and k8s-* firewall rules only AFTER its Service is gone. Destroying the
+# cluster before it finishes leaves them behind, and a leftover firewall rule blocks deleting the VPC.
+echo "==> 4/5 Waiting for GKE to remove its load-balancer resources"
+leftover() {
+  gcloud compute forwarding-rules list --project "$PROJECT" --filter="IPAddress=$INGRESS_IP" --format="value(name)" 2>/dev/null
+  gcloud compute firewall-rules list --project "$PROJECT" --filter="network:$NETWORK AND name~^k8s-" --format="value(name)" 2>/dev/null
+}
+INGRESS_IP=$(gcloud compute addresses describe shopverse-ingress --region "${ZONE%-*}" --project "$PROJECT" --format="value(address)" 2>/dev/null || true)
+NETWORK=shopverse-vpc
+for _ in $(seq 1 30); do
+  [[ -z "$(leftover)" ]] && break
+  echo "    still present: $(leftover | tr '\n' ' ')"
+  sleep 10
+done
+# Anything still left belongs to this lab's VPC only; delete it so the VPC can go.
+for rule in $(gcloud compute firewall-rules list --project "$PROJECT" --filter="network:$NETWORK AND name~^k8s-" --format="value(name)" 2>/dev/null); do
+  echo "    deleting leftover firewall rule $rule"
+  gcloud compute firewall-rules delete "$rule" --project "$PROJECT" --quiet
+done
+
+echo "==> 5/5 terraform destroy (cluster layer)"
 terraform -chdir="$ROOT/infra/terraform/envs/lab/cluster" destroy
 
 # Vault's data died with the cluster, so its stored unseal keys are now useless.
