@@ -4,6 +4,9 @@ kind: AppProject
 metadata:
   name: platform
   namespace: argocd
+  annotations:
+    # Created before any Application (the earliest, `argocd`, is wave -40); an app whose project is missing never syncs
+    argocd.argoproj.io/sync-wave: "-50"
 spec:
   description: Shared cluster platform - ingress, cert-manager, Vault, ESO, monitoring (MetalLB optional, see gitops/optional)
   sourceRepos:

@@ -1,4 +1,5 @@
-# Becomes reachable once ingress-nginx + cert-manager (platform apps) are running.
+# Argo CD UI. Kept out of gitops/bootstrap: an Ingress only turns Healthy once ingress-nginx gives it an
+# address, and the self-managed `argocd` app (wave -40) must be Healthy before ingress-nginx (wave -25) is installed.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
