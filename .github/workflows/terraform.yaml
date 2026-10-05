@@ -1,0 +1,169 @@
+name: Terraform
+
+# GCP lab infrastructure (infra/terraform/envs/lab). No keys anywhere: jobs log in with GitHub OIDC
+# through the Workload Identity pool created by infra/terraform/bootstrap.
+#
+#   Pull request  -> plan both layers as tf-plan@ (read-only) and post the plan on the PR
+#   Run workflow  -> plan + apply one layer as tf-apply@, which GCP only allows from the
+#                    `gcp-infra` environment (required reviewer = approval gate)
+#
+# Applying never happens on merge: creating the cluster costs money, so it is always a deliberate,
+# approved run. Destroying stays local (`make lab-down`), because the cluster layer needs in-cluster
+# cleanup first, and infra/terraform/bootstrap is applied by hand only.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/terraform/envs/**"
+      - ".github/workflows/terraform.yaml"
+  workflow_dispatch:
+    inputs:
+      layer:
+        description: "Layer to apply"
+        type: choice
+        options: [cluster, persistent]
+        default: cluster
+
+permissions:
+  contents: read
+  id-token: write # GitHub OIDC token for Workload Identity Federation
+
+env:
+  TF_VERSION: 1.16.5
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  plan:
+    name: Plan (${{ matrix.layer }})
+    # OIDC tokens are not issued to pull requests from forks
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        layer: [persistent, cluster]
+    concurrency:
+      group: terraform-${{ matrix.layer }} # one Terraform run per state at a time
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: infra/terraform/envs/lab/${{ matrix.layer }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_TF_PLAN_SA }}
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform fmt
+        run: terraform fmt -check -diff
+
+      - name: terraform init
+        run: terraform init -lockfile=readonly
+
+      - name: terraform validate
+        run: terraform validate -no-color
+
+      - name: terraform plan
+        run: |
+          set -o pipefail
+          terraform plan -no-color -lock-timeout=5m -out=tfplan | tee plan.log
+          terraform show -no-color tfplan > plan.txt
+
+      - name: Publish plan
+        if: always()
+        uses: actions/github-script@v9
+        env:
+          LAYER: ${{ matrix.layer }}
+          PLAN_DIR: infra/terraform/envs/lab/${{ matrix.layer }}
+        with:
+          script: |
+            const fs = require('fs');
+            const dir = process.env.PLAN_DIR;
+            const layer = process.env.LAYER;
+            const read = (f) => (fs.existsSync(`${dir}/${f}`) ? fs.readFileSync(`${dir}/${f}`, 'utf8') : '');
+            const log = read('plan.log');
+            let plan = read('plan.txt') || log || 'Plan did not run; see the job log.';
+            const summary = (log.match(/^(Plan: .*|No changes\..*)$/m) || ['(no summary)'])[0];
+            if (plan.length > 60000) plan = plan.slice(0, 60000) + '\n... (truncated, full plan in the job log)';
+            const marker = `<!-- terraform-plan:${layer} -->`;
+            const body = [
+              marker,
+              `### Terraform plan: \`envs/lab/${layer}\``,
+              `**${summary}**`,
+              `<details><summary>Show plan</summary>\n\n\`\`\`hcl\n${plan}\n\`\`\`\n</details>`,
+              `_Commit ${context.sha.slice(0, 7)}, run [#${context.runNumber}](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})_`,
+            ].join('\n\n');
+            await core.summary.addRaw(body).write();
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find((c) => c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+  apply:
+    name: Apply (${{ inputs.layer }})
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # The approval gate: tf-apply@ can only be impersonated by jobs in this environment
+    environment: gcp-infra
+    concurrency:
+      group: terraform-${{ inputs.layer }}
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: infra/terraform/envs/lab/${{ inputs.layer }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_TF_APPLY_SA }}
+
+      # The cluster layer hands the new cluster to Argo CD (scripts/argocd-bootstrap.sh), which needs
+      # gcloud with the GKE auth plugin; kubectl is preinstalled on the runner.
+      - uses: google-github-actions/setup-gcloud@v3
+        if: inputs.layer == 'cluster'
+        with:
+          install_components: gke-gcloud-auth-plugin
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: terraform init -lockfile=readonly
+
+      - name: terraform plan
+        run: |
+          set -o pipefail
+          terraform plan -no-color -lock-timeout=5m -out=tfplan | tee plan.log
+          {
+            echo "### Applying \`envs/lab/${{ inputs.layer }}\`"
+            echo '```'
+            grep -E '^(Plan: |No changes\.)' plan.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: terraform apply
+        run: terraform apply -no-color tfplan
+
+      - name: Outputs
+        run: terraform output -no-color

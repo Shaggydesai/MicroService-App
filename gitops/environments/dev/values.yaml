@@ -2,6 +2,7 @@
 global:
   imageRegistry: ghcr.io/shaggydesai/microservice-app
   imageTag: sha-620c0e9
+
 # Secrets come from Vault (secret/shopverse/dev) via External Secrets Operator.
 # Initial values are generated and seeded declaratively (gitops/platform/manifests/secrets-seed).
 externalSecret:
@@ -9,6 +10,7 @@ externalSecret:
   remoteKey: shopverse/dev
 secrets:
   create: false
+
 ingress:
   enabled: true
   className: nginx
@@ -18,6 +20,7 @@ ingress:
   tls:
     enabled: true
     secretName: shopverse-dev-tls
+
 monitoring:
   serviceMonitor:
     enabled: true
@@ -25,8 +28,10 @@ monitoring:
     enabled: true
   dashboards:
     enabled: true
+
 profiling:
   enabled: true
+
 mongodb:
   persistence:
     size: 2Gi

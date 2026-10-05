@@ -37,7 +37,10 @@ jobs:
           done
 
       - name: Set prod imageTag
-        run: yq -i ".global.imageTag = \"${TAG}\"" gitops/environments/prod/values.yaml
+        # sed, not `yq -i`, so the PR diff is exactly one line (yq reformats the whole file)
+        run: |
+          sed -i -E "s|^(  imageTag:).*|\1 ${TAG}|" gitops/environments/prod/values.yaml
+          test "$(yq '.global.imageTag' gitops/environments/prod/values.yaml)" = "${TAG}"
 
       - name: Open promotion PR
         uses: peter-evans/create-pull-request@v7
