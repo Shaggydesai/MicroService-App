@@ -24,6 +24,13 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: shopverse-prod
+  # The API server adds `status: {phase: Pending}` to each StatefulSet volumeClaimTemplate;
+  # it isn't part of the desired state.
+  ignoreDifferences:
+    - group: apps
+      kind: StatefulSet
+      jqPathExpressions:
+        - .spec.volumeClaimTemplates[]?.status
   syncPolicy:
     # Production syncs automatically too, but only changes when a promotion PR is merged.
     automated:
@@ -38,6 +45,7 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
     retry:
       limit: 5
       backoff:

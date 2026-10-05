@@ -87,11 +87,16 @@ spec:
           emptyDir: {}
         {{- end }}
   {{- if .Values.mongodb.persistence.enabled }}
+  # apiVersion, kind and volumeMode are the values the API server fills in anyway; writing them
+  # here keeps Argo CD from reporting the StatefulSet as OutOfSync forever.
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes: [ReadWriteOnce]
+        volumeMode: Filesystem
         {{- with .Values.mongodb.persistence.storageClass }}
         storageClassName: {{ . }}
         {{- end }}
