@@ -1,0 +1,31 @@
+# Argo CD UI Ingress + Let's Encrypt certificate, once ingress-nginx (-25) and cert-manager (-26) are up
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd-ingress
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-24"
+  labels:
+    app.kubernetes.io/part-of: platform
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/Shaggydesai/MicroService-App.git
+    targetRevision: main
+    path: gitops/platform/manifests/argocd-ingress
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    retry:
+      limit: 10
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

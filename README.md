@@ -9,7 +9,7 @@ ShopVerse is a Flipkart/Amazon-style shopping app built as microservices: a Reac
 
 | What | Declared in Git as | Applied by |
 |---|---|---|
-| Argo CD itself (version, config, health checks, ingress) | `gitops/bootstrap/` (Kustomize) | Argo CD (manages itself) |
+| Argo CD itself (version, config, health checks) | `gitops/bootstrap/` (Kustomize) | Argo CD (manages itself) |
 | Cluster platform: ingress-nginx, cert-manager, Vault, ESO, Prometheus/Grafana, Loki, Alloy, Pyroscope (MetalLB optional, for bare metal) | `gitops/argocd/platform/*.yaml` and `gitops/platform/` | Argo CD, in sync-wave order |
 | Vault init, unseal, KV engine, auth methods, policies, roles | `gitops/platform/manifests/vault/vault.yaml` (Bank-Vaults `Vault` CR) | Bank-Vaults operator |
 | Initial secret values (generated, **never stored in Git**) | `gitops/platform/manifests/secrets-seed/` (ESO generators and PushSecrets) | External Secrets Operator, which writes them to Vault once |
@@ -69,7 +69,7 @@ gitops/
     apps/                    shopverse-dev, shopverse-prod
   platform/
     values/                  Helm values per platform component
-    manifests/               ClusterIssuers, Vault CR + RBAC, ClusterSecretStore,
+    manifests/               Argo CD Ingress, ClusterIssuers, Vault CR + RBAC, ClusterSecretStore,
                              secret seeding, Grafana admin ExternalSecret
   environments/dev|prod/     App values per environment (image tag, hosts, scaling)
   optional/bare-metal/       MetalLB, for clusters without a cloud load balancer (not synced on GKE)
@@ -138,10 +138,12 @@ Argo CD syncs the Applications wave by wave. Each wave waits until the previous 
 
 | Wave | Application | What it does |
 |---|---|---|
+| -50 | AppProjects `platform`, `shopverse` | Must exist before any Application that references them |
 | -40 | `argocd` | Argo CD starts managing itself from `gitops/bootstrap` |
 | -30 | `prometheus-operator-crds` | Monitoring CRDs, so later charts can ship ServiceMonitors |
 | -27, -26 | `cert-manager`, `cert-manager-config` | Let's Encrypt issuers and a private CA (`shopverse-ca-issuer`) |
 | -25 | `ingress-nginx` | One Google Cloud load balancer on the reserved static IP `8.234.83.188` |
+| -24 | `argocd-ingress` | The Argo CD UI Ingress and its certificate (kept out of `gitops/bootstrap`, since an Ingress is only Healthy once ingress-nginx exists) |
 | -24, -23 | `vault-operator`, `vault` | Bank-Vaults creates Vault, **initialises it and auto-unseals it with Cloud KMS**, then applies the KV engine, Kubernetes auth, policy and role from the CR |
 | -22, -21 | `external-secrets`, `external-secrets-config` | ESO and the `vault-backend` ClusterSecretStore |
 | -20 | `secrets-seed` | Generates random app and Grafana secrets in-cluster and pushes them into Vault (once) |

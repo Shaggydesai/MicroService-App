@@ -3,6 +3,9 @@ kind: AppProject
 metadata:
   name: shopverse
   namespace: argocd
+  annotations:
+    # Created before any Application (the earliest, `argocd`, is wave -40); an app whose project is missing never syncs
+    argocd.argoproj.io/sync-wave: "-50"
 spec:
   description: ShopVerse e-commerce platform
   sourceRepos:
