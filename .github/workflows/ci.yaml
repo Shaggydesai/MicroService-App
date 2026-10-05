@@ -8,6 +8,7 @@ on:
       - "gitops/environments/**"
       - "gitops/platform/**"
       - "gitops/argocd/**"
+      - "gitops/optional/**"
       - "**.md"
   pull_request:
     branches: [main]
@@ -63,7 +64,8 @@ jobs:
           ./kubeconform -strict -summary -kubernetes-version 1.33.0 -skip CustomResourceDefinition \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
-            rendered-*.yaml gitops/argocd gitops/platform/manifests
+            rendered-*.yaml gitops/argocd gitops/platform/manifests \
+            gitops/optional/bare-metal/argocd gitops/optional/bare-metal/manifests
 
       - name: Check Prometheus alert rules
         run: |
@@ -96,7 +98,6 @@ jobs:
         id: image
         run: echo "name=${REGISTRY}/${GITHUB_REPOSITORY,,}/${{ matrix.service }}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
@@ -125,7 +126,9 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
-          platforms: linux/amd64,linux/arm64
+          # amd64 only: the GKE nodes are x86, and emulated arm64 builds (QEMU) crash at random in npm ci.
+          # For arm64 later, build natively on an ubuntu-24.04-arm runner instead of emulating.
+          platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

@@ -14,9 +14,9 @@ secrets:
 ingress:
   enabled: true
   className: nginx
-  host: shop-dev.shopverse.local
+  host: shop-dev.8-234-83-188.sslip.io
   annotations:
-    cert-manager.io/cluster-issuer: shopverse-ca-issuer
+    cert-manager.io/cluster-issuer: letsencrypt-prod
   tls:
     enabled: true
     secretName: shopverse-dev-tls

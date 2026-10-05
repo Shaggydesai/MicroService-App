@@ -1,10 +1,14 @@
-# Identity of the Vault pods. Bank-Vaults stores the unseal keys + root token in a Secret in this
-# namespace, so only Vault (and cluster admins) may read Secrets here.
+# Identity of the Vault pods and the Bank-Vaults configurer. On GKE it maps to the Google service
+# account that may use the unseal KMS key and bucket (binding in infra/terraform/envs/lab/cluster).
+# The Role below lets Vault manage Secrets in this namespace (used by the kubernetes unseal alternative
+# in vault.yaml) and label its own pods; only Vault and cluster admins can read Secrets here.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: vault
   namespace: vault
+  annotations:
+    iam.gke.io/gcp-service-account: vault-unseal@shopverse-lab.iam.gserviceaccount.com
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role

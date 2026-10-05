@@ -1,5 +1,6 @@
 # Argo CD itself, declared in Git.
-#   First install (the only imperative step):  kubectl apply -k gitops/bootstrap --server-side
+#   First install (the only imperative step): scripts/argocd-bootstrap.sh, run by Terraform
+#   (infra/terraform/envs/lab/cluster/argocd-bootstrap.tf) or by hand with `make argocd-bootstrap`.
 #   After that the `argocd` Application (gitops/argocd/platform/argocd.yaml) manages this directory,
 #   so upgrading Argo CD = changing the version below and merging.
 apiVersion: kustomize.config.k8s.io/v1beta1

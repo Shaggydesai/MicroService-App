@@ -7,7 +7,7 @@ TAG      ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 PLATFORM ?= linux/amd64
 SERVICES := api-gateway user-service product-service cart-service order-service payment-service
 
-.PHONY: build push up down helm-lint helm-template
+.PHONY: build push up down helm-lint helm-template lab-status lab-down argocd-bootstrap
 
 build:
 	docker build --platform $(PLATFORM) -t $(REGISTRY)/frontend:$(TAG) frontend
@@ -32,3 +32,14 @@ helm-lint:
 
 helm-template:
 	helm template shopverse helm/shopverse -f gitops/environments/dev/values.yaml
+
+# ---- GCP lab (see infra/terraform/envs/lab/README.md) ----
+lab-status:
+	./scripts/lab-status.sh
+
+lab-down:
+	./scripts/lab-down.sh
+
+# Re-run the Argo CD hand-off by hand (terraform apply in envs/lab/cluster normally does it)
+argocd-bootstrap:
+	./scripts/argocd-bootstrap.sh

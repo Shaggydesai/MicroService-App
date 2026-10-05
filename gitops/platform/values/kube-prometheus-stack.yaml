@@ -24,11 +24,11 @@ prometheus:
     enabled: true
     ingressClassName: nginx
     annotations:
-      cert-manager.io/cluster-issuer: shopverse-ca-issuer
-    hosts: [prometheus.shopverse.local]
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts: [prometheus.8-234-83-188.sslip.io]
     tls:
       - secretName: prometheus-tls
-        hosts: [prometheus.shopverse.local]
+        hosts: [prometheus.8-234-83-188.sslip.io]
 
 alertmanager:
   alertmanagerSpec:
@@ -66,11 +66,11 @@ grafana:
     enabled: true
     ingressClassName: nginx
     annotations:
-      cert-manager.io/cluster-issuer: shopverse-ca-issuer
-    hosts: [grafana.shopverse.local]
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts: [grafana.8-234-83-188.sslip.io]
     tls:
       - secretName: grafana-tls
-        hosts: [grafana.shopverse.local]
+        hosts: [grafana.8-234-83-188.sslip.io]
   sidecar:
     dashboards:
       enabled: true
@@ -98,6 +98,6 @@ grafana:
       url: http://pyroscope.monitoring.svc.cluster.local:4040
   grafana.ini:
     server:
-      root_url: https://grafana.shopverse.local
+      root_url: https://grafana.8-234-83-188.sslip.io
     analytics:
       check_for_updates: false

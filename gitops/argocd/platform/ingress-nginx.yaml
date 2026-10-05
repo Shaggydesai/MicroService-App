@@ -1,4 +1,4 @@
-# ingress-nginx: gets its external IP from MetalLB
+# ingress-nginx: one cloud load balancer on the reserved static IP (Terraform envs/lab/persistent)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
