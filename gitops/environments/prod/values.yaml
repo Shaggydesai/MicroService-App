@@ -2,21 +2,24 @@
 global:
   imageRegistry: ghcr.io/shaggydesai/microservice-app
   imageTag: sha-b2cb9b6
+
 # Secrets come from Vault (secret/shopverse/prod) via External Secrets Operator.
 externalSecret:
   enabled: true
   remoteKey: shopverse/prod
 secrets:
   create: false
+
 ingress:
   enabled: true
   className: nginx
-  host: shop.8-234-83-188.sslip.io # sslip.io resolves this name to the ingress static IP; use your own domain if you have one
+  host: shop.8-234-83-188.sslip.io   # sslip.io resolves this name to the ingress static IP; use your own domain if you have one
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
   tls:
     enabled: true
     secretName: shopverse-tls
+
 monitoring:
   serviceMonitor:
     enabled: true
@@ -25,8 +28,10 @@ monitoring:
   # The dev release already ships the dashboard (it covers every namespace via the $namespace variable)
   dashboards:
     enabled: false
+
 profiling:
   enabled: true
+
 serviceDefaults:
   replicaCount: 2
   autoscaling:
@@ -37,16 +42,18 @@ serviceDefaults:
     enabled: true
     minAvailable: 1
   resources:
-    requests: {cpu: 100m, memory: 128Mi}
-    limits: {cpu: "1", memory: 384Mi}
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: "1", memory: 384Mi }
+
 # Per-service overrides are deep-merged with helm/shopverse/values.yaml, e.g.:
 # services:
 #   product-service:
 #     env:
 #       SEED_DATA: "false"   # skip demo catalog seeding
+
 mongodb:
   persistence:
     size: 20Gi
   resources:
-    requests: {cpu: 250m, memory: 512Mi}
-    limits: {cpu: "2", memory: 2Gi}
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "2", memory: 2Gi }

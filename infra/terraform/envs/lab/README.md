@@ -74,6 +74,24 @@ make lab-down       # from the repo root
 
 **Expected after teardown:** no clusters, instances, disks or forwarding rules. One address, `shopverse-ingress`, stays in status `RESERVED`; that's kept on purpose.
 
+## From GitHub Actions (Phase 10)
+
+`.github/workflows/terraform.yaml` runs the same two layers in CI, logging in with GitHub OIDC (no keys):
+
+| When | Job | Google identity | Result |
+|---|---|---|---|
+| A pull request changes `infra/terraform/envs/**` | **plan** for `persistent` and `cluster` | `tf-plan@` (read-only) | The plan is posted as a PR comment and in the job summary |
+| **Actions → Terraform → Run workflow** (pick a layer) | **apply** | `tf-apply@`, usable only from the `gcp-infra` environment | Waits for your approval, then plans and applies; the cluster layer also runs the Argo CD hand-off |
+
+Nothing is applied on merge, and destroying stays local (`make lab-down`), because the cluster needs in-cluster
+cleanup first. `bootstrap/` is never run by CI.
+
+One-time setup in the GitHub repository settings:
+
+1. **Secrets and variables → Actions → Variables**: `GCP_WIF_PROVIDER`, `GCP_TF_PLAN_SA`, `GCP_TF_APPLY_SA`
+   (values from `terraform output github_actions_variables` in `infra/terraform/bootstrap`; none are secret).
+2. **Environments → New environment** `gcp-infra`, with yourself as **Required reviewer**.
+
 ## Common tweaks
 
 | Want | Command |
