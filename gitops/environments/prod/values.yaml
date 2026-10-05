@@ -1,7 +1,7 @@
 # Production environment. `global.imageTag` is changed only through the "Promote to prod" workflow (PR).
 global:
   imageRegistry: ghcr.io/shaggydesai/microservice-app
-  imageTag: sha-620c0e9
+  imageTag: sha-b2cb9b6
 # Secrets come from Vault (secret/shopverse/prod) via External Secrets Operator.
 externalSecret:
   enabled: true
