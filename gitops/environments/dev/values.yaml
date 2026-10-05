@@ -1,7 +1,7 @@
 # Dev environment. `global.imageTag` is bumped automatically by CI on every push to main.
 global:
   imageRegistry: ghcr.io/shaggydesai/microservice-app
-  imageTag: sha-dd7bb6b
+  imageTag: sha-b2cb9b6
 # Secrets come from Vault (secret/shopverse/dev) via External Secrets Operator.
 # Initial values are generated and seeded declaratively (gitops/platform/manifests/secrets-seed).
 externalSecret:
