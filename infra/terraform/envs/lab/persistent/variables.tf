@@ -9,3 +9,9 @@ variable "region" {
   type        = string
   default     = "asia-south1"
 }
+
+variable "reserve_ingress_ip" {
+  description = "Reserve the static ingress IP (about US$7/month while unused). Turn on before bringing the cluster back, then run scripts/set-ingress-ip.sh."
+  type        = bool
+  default     = false
+}

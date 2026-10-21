@@ -23,6 +23,10 @@ on:
         type: choice
         options: [cluster, persistent]
         default: cluster
+      reserve_ingress_ip:
+        description: "persistent only: reserve the static ingress IP (then run scripts/set-ingress-ip.sh)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -128,6 +132,8 @@ jobs:
     defaults:
       run:
         working-directory: infra/terraform/envs/lab/${{ inputs.layer }}
+    env:
+      TF_VAR_reserve_ingress_ip: ${{ inputs.layer == 'persistent' && inputs.reserve_ingress_ip }}
     steps:
       - uses: actions/checkout@v7
 
