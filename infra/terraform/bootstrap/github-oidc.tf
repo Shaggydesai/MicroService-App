@@ -24,6 +24,7 @@ resource "google_iam_workload_identity_pool_provider" "github" {
     "attribute.repository"       = "assertion.repository"
     "attribute.repository_owner" = "assertion.repository_owner"
     "attribute.ref"              = "assertion.ref"
+    "attribute.environment"      = "assertion.environment" # set only for jobs that run in a GitHub environment
   }
 
   # Only tokens from this repository are accepted at all.
@@ -54,7 +55,9 @@ resource "google_service_account_iam_member" "tf_plan_wif" {
 }
 
 # --- terraform apply: can change infrastructure, but ONLY from jobs that run in the protected
-#     GitHub environment (required reviewers), identified by the token's subject claim ---
+#     GitHub environment (required reviewers). Matched on the token's `environment` claim, not on
+#     the full subject string, whose format GitHub lets owners customise (an exact-subject binding
+#     refused the first CI apply). The pool's attribute_condition still limits tokens to this repo. ---
 resource "google_service_account" "tf_apply" {
   account_id   = "tf-apply"
   display_name = "Terraform apply (GitHub Actions, protected environment)"
@@ -80,7 +83,7 @@ resource "google_project_iam_member" "tf_apply" {
 resource "google_service_account_iam_member" "tf_apply_wif" {
   service_account_id = google_service_account.tf_apply.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principal://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/subject/repo:${var.github_repository}:environment:${var.github_apply_environment}"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.environment/${var.github_apply_environment}"
 }
 
 # Both service accounts read/write state (plan needs to take the state lock).

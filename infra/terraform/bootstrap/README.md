@@ -25,7 +25,7 @@ There are no keys, passwords or tokens anywhere in this stage.
 GitHub job ──(OIDC token: repo, ref, environment)──► GCP STS ──checks pool condition──► short-lived token
                                                                                           │
    any job in the repo ───────────────────────────────► may impersonate tf-plan (read-only)
-   only jobs in environment "gcp-infra" (sub claim) ──► may impersonate tf-apply
+   only jobs in environment "gcp-infra" (environment claim) ──► may impersonate tf-apply
 ```
 
 ## Before you start (one time)
