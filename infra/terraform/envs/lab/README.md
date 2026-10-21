@@ -90,7 +90,7 @@ make lab-down       # from the repo root
 | When | Job | Google identity | Result |
 |---|---|---|---|
 | A pull request changes `infra/terraform/envs/**` | **plan** for `persistent` and `cluster` | `tf-plan@` (read-only) | The plan is posted as a PR comment and in the job summary |
-| **Actions → Terraform → Run workflow** (pick a layer) | **apply** | `tf-apply@`, usable only from the `gcp-infra` environment | Waits for your approval, then plans and applies; the cluster layer also runs the Argo CD hand-off |
+| **Actions → Terraform → Run workflow** (pick a layer) | **preview**, then **apply** | `tf-plan@` for the preview; `tf-apply@` (only from the `gcp-infra` environment) for the apply | The preview's plan appears in the run summary; read it, then approve. Apply plans again and stops if anything differs from the preview; the cluster layer also runs the Argo CD hand-off |
 
 Nothing is applied on merge, and destroying stays local (`make lab-down`), because the cluster needs in-cluster
 cleanup first. `bootstrap/` is never run by CI.
