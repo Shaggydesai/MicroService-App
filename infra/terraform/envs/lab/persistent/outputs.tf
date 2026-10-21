@@ -1,13 +1,13 @@
 output "ingress_ip" {
-  description = "Set as controller.service.loadBalancerIP for ingress-nginx (Phase 8)."
-  value       = google_compute_address.ingress.address
+  description = "Reserved IP for ingress-nginx (null when reserve_ingress_ip = false). scripts/set-ingress-ip.sh writes it into gitops/."
+  value       = local.ingress_ip
 }
 
 output "hostnames" {
-  description = "sslip.io hostnames that resolve to the ingress IP, with no DNS setup."
-  value = {
+  description = "sslip.io hostnames that resolve to the ingress IP, with no DNS setup (empty when no IP is reserved)."
+  value = local.ingress_ip == null ? {} : {
     for name in ["shop-dev", "shop", "argocd", "grafana", "prometheus", "vault"] :
-    name => "${name}.${replace(google_compute_address.ingress.address, ".", "-")}.sslip.io"
+    name => "${name}.${replace(local.ingress_ip, ".", "-")}.sslip.io"
   }
 }
 

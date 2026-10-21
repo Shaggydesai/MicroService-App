@@ -142,7 +142,7 @@ Argo CD syncs the Applications wave by wave. Each wave waits until the previous 
 | -40 | `argocd` | Argo CD starts managing itself from `gitops/bootstrap` |
 | -30 | `prometheus-operator-crds` | Monitoring CRDs, so later charts can ship ServiceMonitors |
 | -27, -26 | `cert-manager`, `cert-manager-config` | Let's Encrypt issuers and a private CA (`shopverse-ca-issuer`) |
-| -25 | `ingress-nginx` | One Google Cloud load balancer on the reserved static IP `8.234.83.188` |
+| -25 | `ingress-nginx` | One Google Cloud load balancer on the reserved static IP (`scripts/set-ingress-ip.sh` keeps Git in step with it) |
 | -24 | `argocd-ingress` | The Argo CD UI Ingress and its certificate (kept out of `gitops/bootstrap`, since an Ingress is only Healthy once ingress-nginx exists) |
 | -24, -23 | `vault-operator`, `vault` | Bank-Vaults creates Vault, **initialises it and auto-unseals it with Cloud KMS**, then applies the KV engine, Kubernetes auth, policy and role from the CR |
 | -22, -21 | `external-secrets`, `external-secrets-config` | ESO and the `vault-backend` ClusterSecretStore |

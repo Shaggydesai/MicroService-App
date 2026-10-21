@@ -16,5 +16,5 @@ gcloud compute forwarding-rules list --project "$PROJECT" --format="table(name,r
 section "Static IPs (RESERVED = unused, still billed)"
 gcloud compute addresses list --project "$PROJECT" --format="table(name,region.basename(),address,status)"
 echo
-echo "Expected after scripts/lab-down.sh: no clusters, instances, disks or forwarding rules;"
-echo "one address 'shopverse-ingress' in status RESERVED (kept on purpose)."
+echo "Expected after scripts/lab-down.sh: no clusters, instances, disks or forwarding rules."
+echo "An address 'shopverse-ingress' (RESERVED) appears only while reserve_ingress_ip = true; it bills ~US\$7/month."

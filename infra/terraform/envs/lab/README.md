@@ -4,7 +4,7 @@ Two Terraform root configurations. Both store state in `tfstate-684852499708`, c
 
 | Layer | Folder | What it creates | Lifetime | Cost |
 |---|---|---|---|---|
-| **persistent** | `persistent/` | Vault auto-unseal KMS key ring + key, unseal bucket, `vault-unseal` service account, ingress static IP | Kept for the whole project | About ₹20/day while the IP is unused, plus a few rupees a month |
+| **persistent** | `persistent/` | Vault auto-unseal KMS key ring + key, unseal bucket, `vault-unseal` service account; the ingress static IP only while `reserve_ingress_ip = true` | Kept for the whole project (the IP: per session) | A few rupees a month; about ₹20/day more while an IP is reserved |
 | **cluster** | `cluster/` | VPC + subnet, GKE zonal cluster, Spot node pool (2 × e2-standard-4), `gke-nodes` service account, Vault Workload Identity binding, Argo CD hand-off | Create for a session, destroy afterwards | About ₹6–10/hour on Spot (about ₹25–28/hour on-demand) |
 
 Prices are estimates for asia-south1; check the [pricing calculator](https://cloud.google.com/products/calculator).
@@ -34,11 +34,19 @@ The auth plugin lets `kubectl` log in to GKE with your gcloud account.
 ```bash
 cd infra/terraform/envs/lab/persistent
 terraform init
-terraform plan -out=persistent.tfplan      # review: 7 resources, no cluster
+terraform plan -out=persistent.tfplan      # review: 6 resources, no cluster (7 with reserve_ingress_ip=true)
 terraform apply persistent.tfplan
 terraform output                           # note ingress_ip and hostnames
+```
 
-cd ../cluster
+The static IP is off by default (it bills about US$7 a month even when unused). Each time you bring the lab back:
+
+```bash
+terraform apply -var reserve_ingress_ip=true    # in persistent/: reserves a new IP
+cd ../../../../.. && scripts/set-ingress-ip.sh   # writes it into gitops/ (9 files)
+git switch -c ingress-ip && git commit -am "Ingress IP for this session" && git push -u origin ingress-ip
+# open the PR and merge it BEFORE the cluster apply: Argo CD deploys what main says
+cd infra/terraform/envs/lab/cluster
 terraform init
 terraform plan -out=cluster.tfplan         # review: 8 resources (7 + terraform_data.argocd_bootstrap)
 terraform apply cluster.tfplan             # 8-10 minutes for GKE, then the Argo CD hand-off; billing for nodes starts here
@@ -73,7 +81,7 @@ make lab-down       # from the repo root
 5. Empties the Vault unseal bucket (Vault's data is gone with the cluster).
 6. Runs `make lab-status`, which lists anything that could still cost money.
 
-**Expected after teardown:** no clusters, instances, disks or forwarding rules. One address, `shopverse-ingress`, stays in status `RESERVED`; that's kept on purpose.
+**Expected after teardown:** no clusters, instances, disks or forwarding rules. To stop paying for the IP too, run `terraform apply` in `persistent/` without `reserve_ingress_ip=true` (plan: 1 to destroy). The next session gets a new IP, so new hostnames and certificates.
 
 ## From GitHub Actions (Phase 10)
 

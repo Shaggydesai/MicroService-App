@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Safe teardown of the paid part of the lab (the "cluster" Terraform layer).
-# The persistent layer (KMS key, static IP, unseal bucket) is kept.
+# The persistent layer (KMS key, unseal bucket, and the static IP if reserved) is kept.
 #
 # Order matters: Kubernetes creates cloud resources on its own (a load balancer for each
 # LoadBalancer Service, a persistent disk for each PVC). Terraform doesn't know about them,
@@ -14,7 +14,7 @@ ZONE=${ZONE:-asia-south1-a}
 CLUSTER=shopverse-lab
 
 echo "This will delete the GKE cluster '$CLUSTER', its nodes and its VPC in project '$PROJECT'."
-echo "The static IP, KMS key and Terraform state are kept."
+echo "The KMS key, Terraform state and the static IP (if reserved) are kept."
 read -rp "Type the cluster name to confirm: " answer
 [[ "$answer" == "$CLUSTER" ]] || { echo "Aborted."; exit 1; }
 
@@ -51,7 +51,7 @@ fi
 # cluster before it finishes leaves them behind, and a leftover firewall rule blocks deleting the VPC.
 echo "==> 4/5 Waiting for GKE to remove its load-balancer resources"
 leftover() {
-  gcloud compute forwarding-rules list --project "$PROJECT" --filter="IPAddress=$INGRESS_IP" --format="value(name)" 2>/dev/null
+  [[ -n "$INGRESS_IP" ]] && gcloud compute forwarding-rules list --project "$PROJECT" --filter="IPAddress=$INGRESS_IP" --format="value(name)" 2>/dev/null
   gcloud compute firewall-rules list --project "$PROJECT" --filter="network:$NETWORK AND name~^k8s-" --format="value(name)" 2>/dev/null
 }
 INGRESS_IP=$(gcloud compute addresses describe shopverse-ingress --region "${ZONE%-*}" --project "$PROJECT" --format="value(address)" 2>/dev/null || true)
